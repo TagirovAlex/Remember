@@ -1,0 +1,17 @@
+[Unit]
+Description=Remember — учет серверов, подписок и платежей
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=remember
+Group=remember
+WorkingDirectory=/opt/remember
+EnvironmentFile=/etc/remember.env
+ExecStart=/opt/remember/.venv/bin/python -m app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

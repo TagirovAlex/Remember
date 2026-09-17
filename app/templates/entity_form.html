@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "helpers_macros.html" as helpers %}
+{% block content %}
+<h1>{{ title }}</h1>
+{{ helpers.flashes(request) }}
+<form method="post" action="{{ action }}" class="form">
+  {% for field in fields %}
+    {% if field.type == 'checkbox' %}
+      <label class="checkbox-row">
+        <input type="checkbox" name="{{ field.name }}" {% if field.value %}checked{% endif %}>
+        {{ field.label }}
+      </label>
+    {% elif field.type == 'select' %}
+      <label for="{{ field.name }}">{{ field.label }}</label>
+      <select id="{{ field.name }}" name="{{ field.name }}">
+        {% for value, caption in field.options %}
+          <option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ caption }}</option>
+        {% endfor %}
+      </select>
+    {% elif field.type == 'textarea' %}
+      <label for="{{ field.name }}">{{ field.label }}</label>
+      <textarea id="{{ field.name }}" name="{{ field.name }}" rows="3">{{ field.value }}</textarea>
+    {% else %}
+      <label for="{{ field.name }}">{{ field.label }}</label>
+      <input type="{{ field.type }}" id="{{ field.name }}" name="{{ field.name }}"
+             value="{{ field.value }}" {% if field.required %}required{% endif %}>
+    {% endif %}
+  {% endfor %}
+  <button class="btn" type="submit">Сохранить</button>
+</form>
+{% endblock %}

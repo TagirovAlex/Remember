@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "helpers_macros.html" as helpers %}
+{% block content %}
+<h1>Дашборд</h1>
+{{ helpers.flashes(request) }}
+
+<section class="cards">
+  <div class="card">
+    <div class="card-label">Сегодня</div>
+    <div class="card-value">{{ digest.total_today|money }}</div>
+    <div class="card-note">{{ digest.due_today|length }} оплат</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Ближайшие {{ soon_days }} дней</div>
+    <div class="card-value">{{ digest.total_soon|money }}</div>
+    <div class="card-note">{{ digest.due_soon|length }} оплат</div>
+  </div>
+  <div class="card card-warn">
+    <div class="card-label">Просрочено</div>
+    <div class="card-value">{{ digest.total_overdue|money }}</div>
+    <div class="card-note">{{ digest.overdue|length }} оплат</div>
+  </div>
+</section>
+
+<h2>Сегодня</h2>
+{{ helpers.mini_table(digest.due_today, '/') }}
+
+<h2>Ближайшие {{ soon_days }} дней</h2>
+{{ helpers.mini_table(digest.due_soon, '/') }}
+
+<h2>Просрочено</h2>
+{{ helpers.mini_table(digest.overdue, '/') }}
+
+<h2>Активные серверы</h2>
+{{ helpers.mini_table(servers, '/') }}
+
+<h2>Подписки</h2>
+{{ helpers.mini_table(subscriptions, '/') }}
+
+<h2>Последние платежи</h2>
+{% if recent_payments %}
+<table>
+  <thead>
+    <tr><th>Тип</th><th>Название</th><th>Сумма</th><th>За период</th><th>Оплачено</th><th>Кто</th></tr>
+  </thead>
+  <tbody>
+    {% for row in recent_payments %}
+      <tr>
+        <td>{{ row.type }}</td>
+        <td>{{ row.name }}</td>
+        <td>{{ row.amount }}</td>
+        <td>{{ row.due_date }}</td>
+        <td>{{ row.paid_date }}</td>
+        <td>{{ row.who }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Платежей пока нет.</p>
+{% endif %}
+{% endblock %}

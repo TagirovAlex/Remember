@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% import "helpers_macros.html" as helpers %}
+{% block content %}
+<h1>Настройки</h1>
+{{ helpers.flashes(request) }}
+
+<div class="settings-grid">
+  <div class="settings-section">
+    <h2>Telegram-бот</h2>
+    <div class="card bot-status">
+      <p>
+        Статус процесса:
+        {% if bot_status.error %}
+          <strong class="status-err">❌ Ошибка: {{ bot_status.error }}</strong>
+        {% elif bot_status.running and bot_status.connected %}
+          <strong class="status-ok">✅ Запущен</strong>
+        {% elif bot_status.running %}
+          <strong class="status-neutral">⏳ Запускается…</strong>
+        {% else %}
+          <strong class="status-neutral">⏹ Остановлен</strong>
+        {% endif %}
+      </p>
+      {% if bot_status.connected and bot_status.bot_info %}
+        <p>
+          API:
+          <strong class="status-ok">✅ Online — @{{ bot_status.bot_info.username }} ({{ bot_status.bot_info.first_name }})</strong>
+        </p>
+      {% endif %}
+      {% if not bot_status.token_configured %}
+        <p class="flash error">Токен не задан в окружении (BOT_TOKEN)</p>
+      {% endif %}
+      <form class="inline" method="post" action="/settings/bot/start">
+        <button class="btn" type="submit" {% if bot_status.running %}disabled{% endif %}>▶️ Запустить</button>
+      </form>
+      <form class="inline" method="post" action="/settings/bot/stop">
+        <button class="btn btn-danger" type="submit" {% if not bot_status.running and not bot_status.error %}disabled{% endif %}>⏹ Остановить</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <form method="post" action="/settings" class="form">
+      <h2>Параметры</h2>
+      {% for item in settings_items %}
+        {% if item.key not in ['bot_enabled', 'proxy_enabled', 'proxy_host', 'proxy_port', 'proxy_user', 'proxy_password'] %}
+          {% if item.type == 'bool' %}
+            <label class="checkbox-row">
+              <input type="checkbox" name="{{ item.key }}" {% if item.value == 'true' %}checked{% endif %}>
+              {{ item.description }}
+            </label>
+          {% else %}
+            <label for="{{ item.key }}">{{ item.description }}</label>
+            {% if item.type == 'int' %}
+              <input type="number" id="{{ item.key }}" name="{{ item.key }}" value="{{ item.value }}">
+            {% elif item.type == 'time' %}
+              <input type="time" id="{{ item.key }}" name="{{ item.key }}" value="{{ item.value }}">
+            {% else %}
+              <input type="text" id="{{ item.key }}" name="{{ item.key }}" value="{{ item.value }}">
+            {% endif %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+
+      <h2>SOCKS5-прокси</h2>
+      <div class="card">
+        <label class="checkbox-row">
+          <input type="checkbox" name="proxy_enabled" {% if proxy['proxy_enabled'] == 'true' %}checked{% endif %}>
+          Прокси включён
+        </label>
+        <label for="proxy_host">Хост прокси</label>
+        <input type="text" id="proxy_host" name="proxy_host" value="{{ proxy['proxy_host'] }}">
+        <label for="proxy_port">Порт прокси</label>
+        <input type="number" id="proxy_port" name="proxy_port" value="{{ proxy['proxy_port'] }}" placeholder="1080">
+        <label for="proxy_user">Логин прокси</label>
+        <input type="text" id="proxy_user" name="proxy_user" value="{{ proxy['proxy_user'] }}">
+        <label for="proxy_password">Пароль прокси</label>
+        <input type="password" id="proxy_password" name="proxy_password" value="" placeholder="оставить текущий" autocomplete="new-password">
+        <p class="card-note">Используется только для Telegram-бота; применится при следующем запуске бота</p>
+      </div>
+
+      <button class="btn" type="submit">Сохранить</button>
+    </form>
+  </div>
+
+  <div class="settings-section">
+    <h2>Telegram</h2>
+    <div class="card">
+      {% if telegram.telegram_id %}
+        <p>
+          Привязано к <strong>{{ telegram.telegram_id }}</strong>
+          {% if telegram.confirmed %}(подтверждено){% else %}— ожидает подтверждения{% endif %}
+        </p>
+        {% if not telegram.confirmed %}
+          <p class="flash error">Ожидает подтверждения — нажмите «Подтвердить» в Telegram</p>
+        {% endif %}
+        <form class="inline" method="post" action="/settings/telegram">
+          <input type="hidden" name="telegram_id" value="">
+          <button class="btn btn-danger" type="submit">Отвязать</button>
+        </form>
+      {% else %}
+        <p>Не привязано.</p>
+      {% endif %}
+      <form method="post" action="/settings/telegram" class="form">
+        <label for="telegram_id">Ваш Telegram ID (число)</label>
+        <input type="number" id="telegram_id" name="telegram_id" min="1" step="1" placeholder="например 123456789">
+        <small class="field-hint">Узнать свой ID: напишите @userinfobot</small>
+        <button class="btn" type="submit">Привязать</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h2>Сменить мой пароль</h2>
+    <form method="post" action="/settings/password" class="form">
+      <label for="old-password">Текущий пароль</label>
+      <input type="password" id="old-password" name="old" required>
+      <label for="new-password">Новый пароль</label>
+      <input type="password" id="new-password" name="new" required>
+      <label for="confirm-password">Повтор нового пароля</label>
+      <input type="password" id="confirm-password" name="confirm" required>
+      <button class="btn" type="submit">Сменить пароль</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

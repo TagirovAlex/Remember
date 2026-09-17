@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru" data-theme="{{ request.state.user.theme if request.state.user else 'light' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Remember{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <nav>
+      <a class="brand" href="/">Remember</a>
+      {% block nav %}
+        {% if request.state.user %}
+          <a href="/">Дашборд</a>
+          <a href="/servers">Серверы</a>
+          <a href="/subscriptions">Подписки</a>
+          <a href="/expenses">Расходы</a>
+          <a href="/payments">Платежи</a>
+          {% if request.state.user.role == 'admin' %}
+            <a href="/users">Пользователи</a>
+            <a href="/backups">Бэкапы</a>
+          {% endif %}
+          <a href="/settings">Настройки</a>
+          <span class="nav-user">{{ request.state.user.username }}</span>
+          <button type="button" class="theme-toggle" data-current-theme="{{ request.state.user.theme }}">
+            {% if request.state.user.theme == 'dark' %}☀️ Светлая{% else %}🌙 Тёмная{% endif %}
+          </button>
+          <a href="/logout">Выход</a>
+        {% else %}
+          <a href="/register">Регистрация</a>
+        {% endif %}
+      {% endblock %}
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

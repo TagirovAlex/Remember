@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "remember"
+version = "0.1.0"
+description = "Remember — учёт серверов, подписок и платежей"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "jinja2",
+    "sqlalchemy>=2.0",
+    "aiosqlite",
+    "pydantic>=2",
+    "pydantic-settings",
+    "python-multipart",
+    "argon2-cffi",
+    "itsdangerous",
+    "aiogram>=3",
+    "apscheduler>=3.10",
+    "httpx[socks]",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

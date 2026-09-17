@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "helpers_macros.html" as helpers %}
+{% block content %}
+<h1>Бэкапы</h1>
+{{ helpers.flashes(request) }}
+<form class="inline" method="post" action="/backups/create">
+  <button class="btn" type="submit">Создать бэкап</button>
+</form>
+{% if backups %}
+<table>
+  <thead>
+    <tr><th>Имя</th><th>Размер</th><th>Дата</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for backup in backups %}
+      <tr>
+        <td>{{ backup.name }}</td>
+        <td>{{ backup.size }} байт</td>
+        <td>{{ backup.modified.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td>
+          <a class="link" href="/backups/download/{{ backup.name }}">Скачать</a>
+          <form class="inline" method="post" action="/backups/{{ backup.name }}/delete">
+            <button class="btn btn-danger" type="submit">Удалить</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Бэкапов пока нет.</p>
+{% endif %}
+{% endblock %}
