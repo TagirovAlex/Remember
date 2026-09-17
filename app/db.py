@@ -29,9 +29,18 @@ _COLUMN_DEFS: dict[str, list[tuple[str, str]]] = {
         ("telegram_id_confirmed", "BOOLEAN NOT NULL DEFAULT 0"),
         ("session_epoch", "INTEGER NOT NULL DEFAULT 0"),
     ],
-    "servers": [("owner_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE")],
-    "subscriptions": [("owner_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE")],
-    "one_time_expenses": [("owner_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE")],
+    "servers": [
+        ("owner_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE"),
+        ("image", "VARCHAR(255)"),
+    ],
+    "subscriptions": [
+        ("owner_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE"),
+        ("image", "VARCHAR(255)"),
+    ],
+    "one_time_expenses": [
+        ("owner_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE"),
+        ("image", "VARCHAR(255)"),
+    ],
     "bot_subscribers": [("user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL")],
 }
 

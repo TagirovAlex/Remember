@@ -12,7 +12,7 @@ from app.bot.manager import bot_manager
 from app.config import settings
 from app.db import get_session
 from app.factory import create_app
-from app.models import Base, OneTimeExpense, Server, Subscription, User
+from app.models import Base, OneTimeExpense, Payment, Server, Subscription, User
 from app.security import hash_password
 from app.services import settings as settings_svc
 
@@ -141,6 +141,40 @@ async def test_dashboard_with_entities(client, session_factory):
     assert "Netflix" in response.text
     assert "12 000 ₽" in response.text
     assert "900 ₽" in response.text
+
+
+async def test_payments_page_shows_all_payments(client, session_factory):
+    async with session_factory() as session:
+        admin = await session.scalar(select(User).where(User.username == "admin"))
+        server = Server(
+            name="GPU-ALL",
+            kind="gpu",
+            provider="Hetzner",
+            amount_rub=1000,
+            period="monthly",
+            next_due=date(2026, 9, 16),
+            is_active=True,
+            owner_id=admin.id,
+        )
+        session.add(server)
+        await session.commit()
+        await session.refresh(server)
+        for day in range(1, 13):
+            session.add(
+                Payment(
+                    target_type="server",
+                    target_id=server.id,
+                    amount_rub=1000,
+                    due_date=date(2026, 8, day),
+                    paid_date=date(2026, 8, day),
+                )
+            )
+        await session.commit()
+    await _login(client)
+    response = await client.get("/payments")
+    assert response.status_code == 200
+    for day in range(1, 13):
+        assert f"2026-08-{day:02d}" in response.text
 
 
 async def test_pay_server_via_web(client, session_factory):

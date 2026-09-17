@@ -5,7 +5,7 @@
   <h1>{{ title }}</h1>
 </div>
 {{ helpers.flashes(request) }}
-<form method="post" action="{{ action }}" class="form-card">
+<form method="post" action="{{ action }}" class="form-card" enctype="multipart/form-data">
   {% for field in fields %}
     {% if field.type == 'checkbox' %}
       <label class="checkbox-row">
@@ -28,6 +28,15 @@
              value="{{ field.value }}" {% if field.required %}required{% endif %}>
     {% endif %}
   {% endfor %}
+  <label for="image">Картинка</label>
+  {% if image_url %}
+    <div class="image-preview">
+      <img src="{{ image_url }}" alt="Картинка">
+      <button class="btn btn-danger btn-sm" type="submit"
+              formaction="{{ image_delete_url }}">Удалить</button>
+    </div>
+  {% endif %}
+  <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp">
   <button class="btn" type="submit">Сохранить</button>
 </form>
 {% endblock %}

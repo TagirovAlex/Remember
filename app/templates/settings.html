@@ -105,7 +105,11 @@
       <form method="post" action="/settings/telegram" class="form-card">
         <label for="telegram_id">Ваш Telegram ID (число)</label>
         <input type="number" id="telegram_id" name="telegram_id" min="1" step="1" placeholder="например 123456789">
-        <small class="field-hint">Узнать свой ID: напишите @userinfobot</small>
+        <small class="field-hint">
+          Как узнать свой ID:<br>
+          1) откройте в Telegram бота <a href="https://t.me/userinfobot" target="_blank" rel="noopener">@userinfobot</a> и нажмите Start;<br>
+          2) он пришлёт ваш числовой ID — скопируйте его сюда.
+        </small>
         <button class="btn" type="submit">Привязать</button>
       </form>
     </div>

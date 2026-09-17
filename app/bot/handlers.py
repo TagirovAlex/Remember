@@ -19,18 +19,33 @@ from app.bot.keyboards import (
     binding_notice_text,
     confirm_binding_keyboard,
     digest_pay_keyboard,
+    expense_category_keyboard,
     parse_add_kind_callback,
     parse_cancel_binding_callback,
     parse_confirm_binding_callback,
+    parse_expense_category_callback,
     parse_pay_callback,
     parse_period_callback,
     pay_keyboard,
     period_keyboard,
 )
 from app.db import SessionLocal
-from app.models import BotSubscriber, Server, Subscription, User
-from app.services.billing import NotOwnerError, collect_digest, mark_paid_once
-from app.services.notify import fmt_money, render_digest
+from app.models import BotSubscriber, OneTimeExpense, Server, Subscription, User
+from app.services.billing import (
+    NotOwnerError,
+    collect_digest,
+    mark_paid_once,
+    monthly_summary,
+    owned_payments,
+    search_owned,
+)
+from app.services.notify import (
+    fmt_money,
+    render_digest,
+    render_history,
+    render_monthly_summary,
+    render_search,
+)
 from app.services.settings import remind_soon_days
 from app.services.settings import tz as get_tz
 
@@ -48,6 +63,10 @@ HELP_TEXT = (
     "/today — платежи на сегодня\n"
     "/soon — платежи на ближайшие N дней\n"
     "/overdue — просроченные платежи\n"
+    "/stats — сводка за текущий месяц\n"
+    "/addexpense — быстро добавить разовый расход\n"
+    "/history [N] — последние платежи (N до 30)\n"
+    "/find <запрос> — поиск по серверам, подпискам и расходам\n"
     "/list — серверы и подписки\n"
     "/add — быстро добавить позицию\n"
     "/subscribe — подписаться на дайджесты\n"
@@ -318,6 +337,109 @@ async def cmd_list(message: Message) -> None:
     await message.answer(text, reply_markup=keyboard)
 
 
+@router.message(Command("stats"))
+async def cmd_stats(message: Message) -> None:
+    async with session_factory() as session:
+        user = await _owner(session, message.chat.id)
+        if user is None:
+            await session.commit()
+            await message.answer(BINDING_HINT)
+            return
+        ref_month = await today(session)
+        summary = await monthly_summary(session, user.id, ref_month, today=ref_month)
+        await session.commit()
+    await message.answer(render_monthly_summary(summary))
+
+
+async def _target_names(
+    session: AsyncSession, owner_id: int
+) -> dict[str, dict[int, str]]:
+    servers = (
+        await session.scalars(select(Server).where(Server.owner_id == owner_id))
+    ).all()
+    subscriptions = (
+        await session.scalars(
+            select(Subscription).where(Subscription.owner_id == owner_id)
+        )
+    ).all()
+    return {
+        "server": {server.id: server.name for server in servers},
+        "subscription": {
+            subscription.id: subscription.name for subscription in subscriptions
+        },
+    }
+
+
+async def _history_rows(
+    session: AsyncSession, owner_id: int, limit: int
+) -> list[dict]:
+    payments = await owned_payments(session, owner_id, limit=limit)
+    names = await _target_names(session, owner_id)
+    users = (await session.scalars(select(User))).all()
+    user_names = {user.id: user.username for user in users}
+    rows: list[dict] = []
+    for payment in payments:
+        rows.append(
+            {
+                "paid_date": payment.paid_date,
+                "name": names.get(payment.target_type, {}).get(
+                    payment.target_id, "—"
+                ),
+                "amount_rub": payment.amount_rub,
+                "paid_by": (
+                    user_names.get(payment.paid_by) if payment.paid_by else None
+                ),
+                "notes": payment.notes,
+            }
+        )
+    return rows
+
+
+@router.message(Command("history"))
+async def cmd_history(message: Message) -> None:
+    limit = 10
+    args = message.text.split(maxsplit=1)
+    if len(args) == 2:
+        raw = args[1].strip()
+        try:
+            limit = int(raw)
+        except ValueError:
+            await message.answer("Использование: /history [N], N от 1 до 30")
+            return
+        if limit < 1 or limit > 30:
+            await message.answer("N должно быть от 1 до 30")
+            return
+    async with session_factory() as session:
+        user = await _owner(session, message.chat.id)
+        if user is None:
+            await session.commit()
+            await message.answer(BINDING_HINT)
+            return
+        rows = await _history_rows(session, user.id, limit)
+        await session.commit()
+    await message.answer(render_history(rows, limit))
+
+
+@router.message(Command("find"))
+async def cmd_find(message: Message) -> None:
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip():
+        await message.answer(
+            "Использование: /find <запрос>, например /find gpu node"
+        )
+        return
+    query = args[1].strip()
+    async with session_factory() as session:
+        user = await _owner(session, message.chat.id)
+        if user is None:
+            await session.commit()
+            await message.answer(BINDING_HINT)
+            return
+        results = await search_owned(session, user.id, query)
+        await session.commit()
+    await message.answer(render_search(query, results))
+
+
 class AddStates(StatesGroup):
     """FSM steps for the /add command."""
 
@@ -455,6 +577,110 @@ async def add_enter_next_due(message: Message, state: FSMContext) -> None:
     await message.answer(
         f"✅ {label} «{item.name}» добавлен(а): {fmt_money(item.amount_rub)} "
         f"— до {item.next_due:%d.%m.%Y}"
+    )
+
+
+class ExpenseStates(StatesGroup):
+    """FSM steps for the /addexpense command."""
+
+    name = State()
+    amount = State()
+    category = State()
+    paid_date = State()
+
+
+@router.message(Command("addexpense"))
+async def cmd_addexpense(message: Message, state: FSMContext) -> None:
+    async with session_factory() as session:
+        user = await _owner(session, message.chat.id)
+        await session.commit()
+        if user is None:
+            await message.answer(BINDING_HINT)
+            return
+        owner_id = user.id
+    await state.update_data(owner_id=owner_id)
+    await state.set_state(ExpenseStates.name)
+    await message.answer("Название расхода:")
+
+
+@router.message(ExpenseStates.name, F.text)
+async def expense_enter_name(message: Message, state: FSMContext) -> None:
+    name = message.text.strip()
+    if not name:
+        await message.answer("Название не может быть пустым")
+        return
+    if len(name) > 200:
+        await message.answer("Слишком длинное название (до 200 символов)")
+        return
+    await state.update_data(name=name)
+    await state.set_state(ExpenseStates.amount)
+    await message.answer("Сумма в рублях (целое число):")
+
+
+@router.message(ExpenseStates.amount, F.text)
+async def expense_enter_amount(message: Message, state: FSMContext) -> None:
+    clean = message.text.strip().replace(" ", "").replace("₽", "")
+    try:
+        amount = int(clean)
+    except ValueError:
+        await message.answer("Введите сумму целым числом в рублях:")
+        return
+    if amount <= 0:
+        await message.answer("Сумма должна быть больше нуля:")
+        return
+    await state.update_data(amount_rub=amount)
+    await state.set_state(ExpenseStates.category)
+    await message.answer("Категория:", reply_markup=expense_category_keyboard())
+
+
+@router.callback_query(ExpenseStates.category, F.data)
+async def expense_choose_category(callback: CallbackQuery, state: FSMContext) -> None:
+    category = parse_expense_category_callback(callback.data)
+    if category is None:
+        await callback.answer("Некорректная кнопка")
+        return
+    await state.update_data(category=category)
+    await state.set_state(ExpenseStates.paid_date)
+    await callback.answer(category)
+    if callback.message is None:
+        return
+    await callback.message.delete()
+    await callback.message.answer(
+        "Дата оплаты (ДД.ММ.ГГГГ) или Enter — сегодня:"
+    )
+
+
+@router.message(ExpenseStates.paid_date, F.text)
+async def expense_enter_date(message: Message, state: FSMContext) -> None:
+    raw = message.text.strip()
+    if raw:
+        try:
+            day, month, year = (int(part) for part in raw.split("."))
+            paid_date = date(year, month, day)
+        except ValueError:
+            await message.answer("Формат даты: ДД.ММ.ГГГГ, например 15.09.2026")
+            return
+    else:
+        async with session_factory() as session:
+            paid_date = await today(session)
+
+    data = await state.get_data()
+    async with session_factory() as session:
+        expense = OneTimeExpense(
+            owner_id=data["owner_id"],
+            title=data["name"],
+            amount_rub=data["amount_rub"],
+            paid_date=paid_date,
+            category=data["category"],
+        )
+        session.add(expense)
+        await session.commit()
+        await session.refresh(expense)
+
+    await state.clear()
+    await message.answer(
+        f"✅ Расход «{expense.title}» — {fmt_money(expense.amount_rub)}, "
+        f"{expense.paid_date:%d.%m.%Y}"
     )
 
 

@@ -74,6 +74,7 @@ class Server(Base):
     what_runs: Mapped[str | None] = mapped_column(Text, nullable=True)
     panel_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image: Mapped[str | None] = mapped_column(String(255), nullable=True)
     amount_rub: Mapped[int] = mapped_column(Integer)
     period: Mapped[str] = mapped_column(String(20))
     next_due: Mapped[date] = mapped_column(Date)
@@ -110,6 +111,7 @@ class Subscription(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")
     url: Mapped[str | None] = mapped_column(String(300), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -130,6 +132,7 @@ class OneTimeExpense(Base):
     paid_date: Mapped[date] = mapped_column(Date)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

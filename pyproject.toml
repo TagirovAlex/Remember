@@ -21,6 +21,7 @@ dependencies = [
     "aiogram>=3",
     "apscheduler>=3.10",
     "httpx[socks]",
+    "Pillow",
 ]
 
 [project.optional-dependencies]

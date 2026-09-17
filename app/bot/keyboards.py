@@ -4,6 +4,7 @@ Callback formats (compact, <=64 bytes):
     pay:{target_type}:{target_id}   — mark an entry as paid
     add:{target_type}               — choose what to add in /add FSM
     period:{period}                 — choose billing period in /add FSM
+    exp_cat:{category}              — choose an expense category in /addexpense FSM
     tg_confirm:{user_id}            — confirm a Telegram binding
     tg_cancel:{user_id}             — reject a Telegram binding
 """
@@ -14,11 +15,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 PAY_PREFIX = "pay"
 ADD_PREFIX = "add"
 PERIOD_PREFIX = "period"
+EXP_CAT_PREFIX = "exp_cat"
 TG_CONFIRM_PREFIX = "tg_confirm"
 TG_CANCEL_PREFIX = "tg_cancel"
 
 VALID_TARGET_TYPES = ("server", "subscription")
 VALID_PERIODS = ("monthly", "quarterly", "yearly")
+EXPENSE_CATEGORIES = ("API", "Питание", "Транспорт", "Инфраструктура", "Другое")
 
 PERIOD_LABELS: dict[str, str] = {
     "monthly": "Ежемесячно",
@@ -138,6 +141,32 @@ def period_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for period in VALID_PERIODS:
         builder.button(text=PERIOD_LABELS[period], callback_data=period_callback(period))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def expense_category_callback(category: str) -> str:
+    """Build callback_data for choosing an expense category, e.g. exp_cat:API."""
+    if category not in EXPENSE_CATEGORIES:
+        raise ValueError(f"unknown category: {category}")
+    return f"{EXP_CAT_PREFIX}:{category}"
+
+
+def parse_expense_category_callback(data: str | None) -> str | None:
+    """Parse exp_cat:{category}; return None for invalid payloads."""
+    if not data or not data.startswith(f"{EXP_CAT_PREFIX}:"):
+        return None
+    category = data.split(":", 1)[1]
+    return category if category in EXPENSE_CATEGORIES else None
+
+
+def expense_category_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for choosing an expense category in /addexpense."""
+    builder = InlineKeyboardBuilder()
+    for category in EXPENSE_CATEGORIES:
+        builder.button(
+            text=category, callback_data=expense_category_callback(category)
+        )
     builder.adjust(1)
     return builder.as_markup()
 

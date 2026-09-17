@@ -153,6 +153,9 @@ async def test_migrate_schema_adds_columns_and_backfills(engine, factory):
         assert "owner_id" in await _columns(session, "servers")
         assert "owner_id" in await _columns(session, "subscriptions")
         assert "owner_id" in await _columns(session, "one_time_expenses")
+        assert "image" in await _columns(session, "servers")
+        assert "image" in await _columns(session, "subscriptions")
+        assert "image" in await _columns(session, "one_time_expenses")
         assert "user_id" in await _columns(session, "bot_subscribers")
         users_cols = await _columns(session, "users")
         assert "telegram_id" in users_cols

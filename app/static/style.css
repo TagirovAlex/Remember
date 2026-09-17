@@ -240,6 +240,7 @@ h2 {
 .table-responsive {
   overflow-x: auto;
   margin: 16px 0;
+  min-width: 0;
 }
 
 table {
@@ -262,6 +263,8 @@ table {
   padding: 10px 14px;
   border-bottom: 1px solid var(--color-border);
   font-size: 14px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .data-table th {
@@ -277,6 +280,10 @@ table {
 .data-table td.actions {
   text-align: right;
   white-space: nowrap;
+}
+
+.data-table img {
+  max-width: 100%;
 }
 
 /* ---------- Buttons ---------- */
@@ -420,6 +427,11 @@ label.checkbox-row {
   margin: 4px 0 8px;
 }
 
+.field-hint a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
 input,
 select,
 textarea {
@@ -483,4 +495,28 @@ textarea {
   background: var(--flash-error-bg);
   border-color: var(--flash-error-border);
   color: var(--flash-error-text);
+}
+
+/* ---------- Entity images ---------- */
+
+.entity-thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.image-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.image-preview img {
+  max-height: 64px;
+  max-width: 64px;
+  object-fit: cover;
+  border-radius: 6px;
 }

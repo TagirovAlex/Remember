@@ -38,7 +38,8 @@ from app.schemas import (
 from app.security import hash_password, verify_password
 from app.services import settings as settings_svc
 from app.services.backup import create_backup, list_backups, resolve_backup
-from app.services.billing import collect_digest, mark_paid_once
+from app.services.billing import collect_digest, mark_paid_once, owned_payments
+from app.services.images import delete_image, image_path, image_url, save_image
 from app.services.notify import fmt_money
 
 router = APIRouter()
@@ -71,6 +72,7 @@ PERIOD_LABELS = {"monthly": "Ежемесячно", "quarterly": "Раз в кв
 STATUS_LABELS = {"active": "Активна", "paused": "На паузе", "archived": "Архив"}
 
 SERVER_COLUMNS = [
+    {"label": "Картинка", "key": "image"},
     {"label": "Название", "key": "name"},
     {"label": "Тип", "key": "kind"},
     {"label": "Провайдер", "key": "provider"},
@@ -81,6 +83,7 @@ SERVER_COLUMNS = [
     {"label": "Активен", "key": "is_active"},
 ]
 SUBSCRIPTION_COLUMNS = [
+    {"label": "Картинка", "key": "image"},
     {"label": "Название", "key": "name"},
     {"label": "Провайдер", "key": "provider"},
     {"label": "Сумма", "key": "amount"},
@@ -90,12 +93,19 @@ SUBSCRIPTION_COLUMNS = [
     {"label": "Автопродление", "key": "auto_renewal"},
 ]
 EXPENSE_COLUMNS = [
+    {"label": "Картинка", "key": "image"},
     {"label": "Название", "key": "name"},
     {"label": "Сумма", "key": "amount"},
     {"label": "Дата", "key": "paid_date"},
     {"label": "Категория", "key": "category"},
     {"label": "Заметки", "key": "notes"},
 ]
+
+_ENTITY_MODELS = {
+    "server": Server,
+    "subscription": Subscription,
+    "expense": OneTimeExpense,
+}
 
 def _bool_mark(value: bool) -> str:
     return "✓" if value else "—"
@@ -143,6 +153,7 @@ def _server_row(server: Server) -> dict:
         "period": PERIOD_LABELS.get(server.period, server.period),
         "next_due": server.next_due.isoformat(),
         "is_active": _bool_mark(server.is_active),
+        "image": image_url("server", server.id) if server.image else None,
         "pay": server.is_active,
     }
 
@@ -159,6 +170,7 @@ def _sub_row(sub: Subscription) -> dict:
         "next_due": sub.next_due.isoformat(),
         "status": STATUS_LABELS.get(sub.status, sub.status),
         "auto_renewal": _bool_mark(sub.auto_renewal),
+        "image": image_url("subscription", sub.id) if sub.image else None,
         "pay": sub.status == "active",
     }
 
@@ -171,6 +183,7 @@ def _expense_row(expense: OneTimeExpense) -> dict:
         "paid_date": expense.paid_date.isoformat(),
         "category": expense.category or "—",
         "notes": expense.notes or "—",
+        "image": image_url("expense", expense.id) if expense.image else None,
     }
 
 
@@ -193,6 +206,31 @@ def _redirect_back(next_url: str | None, default: str, msg: str) -> RedirectResp
     if not target.startswith("/"):
         target = default
     return RedirectResponse(f"{target}?msg={quote(msg)}", status_code=303)
+
+
+def _entity_image(name: str, entity_type: str, entity_id: int) -> str | None:
+    return image_url(entity_type, entity_id) if name else None
+
+
+@router.get(
+    "/images/{entity_type}/{entity_id}", dependencies=[Depends(get_current_user)]
+)
+async def entity_image(
+    request: Request, entity_type: str, entity_id: int, session: SessionDep
+):
+    """Serve the stored image of an owned entity; 404 otherwise."""
+    model = _ENTITY_MODELS.get(entity_type)
+    if model is None:
+        raise HTTPException(status_code=404)
+    entity = await session.get(model, entity_id)
+    if entity is None or entity.owner_id != request.state.user.id or not entity.image:
+        raise HTTPException(status_code=404)
+    path = image_path(entity.image)
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(
+        path, media_type="image/webp", headers={"Cache-Control": "max-age=3600"}
+    )
 
 
 def _server_fields(server: Server | None) -> list[dict]:
@@ -405,7 +443,7 @@ async def dashboard(request: Request, session: SessionDep):
             .order_by(Subscription.name)
         )
     ).all()
-    payments = await _owned_payments(session, user.id, limit=10)
+    payments = await owned_payments(session, user.id, limit=10)
     names = await _target_names(session, user.id)
     user_names = await _user_names(session)
     return templates.TemplateResponse(
@@ -444,33 +482,6 @@ async def _user_names(session: AsyncSession) -> dict[int, str]:
     return {user.id: user.username for user in users}
 
 
-async def _owned_payments(
-    session: AsyncSession, owner_id: int, limit: int | None = None
-) -> list[Payment]:
-    """Payments whose target (server/subscription) belongs to ``owner_id``."""
-    owned_server_ids = select(Server.id).where(Server.owner_id == owner_id)
-    owned_sub_ids = select(Subscription.id).where(Subscription.owner_id == owner_id)
-    statement = (
-        select(Payment)
-        .where(
-            or_(
-                and_(
-                    Payment.target_type == "server",
-                    Payment.target_id.in_(owned_server_ids),
-                ),
-                and_(
-                    Payment.target_type == "subscription",
-                    Payment.target_id.in_(owned_sub_ids),
-                ),
-            )
-        )
-        .order_by(Payment.paid_date.desc(), Payment.id.desc())
-    )
-    if limit is not None:
-        statement = statement.limit(limit)
-    return list((await session.scalars(statement)).all())
-
-
 @router.get("/servers", dependencies=[Depends(get_current_user)])
 async def list_servers(request: Request, session: SessionDep):
     servers = (
@@ -499,7 +510,13 @@ async def new_server(request: Request):
     return templates.TemplateResponse(
         request,
         "entity_form.html",
-        {"title": "Новый сервер", "action": "/servers", "fields": _server_fields(None)},
+        {
+            "title": "Новый сервер",
+            "action": "/servers",
+            "fields": _server_fields(None),
+            "image_url": None,
+            "image_delete_url": None,
+        },
     )
 
 
@@ -521,6 +538,8 @@ async def edit_server(
             "title": f"Сервер — {server.name}",
             "action": f"/servers/{server_id}",
             "fields": _server_fields(server),
+            "image_url": _entity_image(server.image, "server", server.id),
+            "image_delete_url": f"/servers/{server_id}/image/delete",
         },
     )
 
@@ -536,6 +555,13 @@ async def create_server(request: Request, session: SessionDep):
     except (ValueError, IntegrityError) as exc:
         await session.rollback()
         return RedirectResponse(f"/servers/new?error={quote(str(exc))}", status_code=303)
+    image = form.get("image")
+    if image is not None and (image.filename or "").strip():
+        try:
+            server.image = await save_image(image, "server", server.id)
+            await session.commit()
+        except ValueError as exc:
+            return RedirectResponse(f"/servers/new?error={quote(str(exc))}", status_code=303)
     return RedirectResponse(f"/servers?msg={quote('Сервер добавлен')}", status_code=303)
 
 
@@ -559,6 +585,13 @@ async def update_server(
     except (ValueError, IntegrityError) as exc:
         await session.rollback()
         return RedirectResponse(f"/servers/{server_id}/edit?error={quote(str(exc))}", status_code=303)
+    image = form.get("image")
+    if image is not None and (image.filename or "").strip():
+        try:
+            server.image = await save_image(image, "server", server_id)
+            await session.commit()
+        except ValueError as exc:
+            return RedirectResponse(f"/servers/{server_id}/edit?error={quote(str(exc))}", status_code=303)
     return RedirectResponse(f"/servers?msg={quote('Сервер обновлён')}", status_code=303)
 
 
@@ -576,6 +609,10 @@ async def delete_server(
     await session.execute(delete(Payment).where(Payment.target_type == "server", Payment.target_id == server_id))
     await session.delete(server)
     await session.commit()
+    try:
+        await delete_image("server", server_id)
+    except ValueError:
+        pass
     return RedirectResponse(f"/servers?msg={quote('Сервер удалён')}", status_code=303)
 
 
@@ -599,6 +636,27 @@ async def pay_server(
     await session.commit()
     msg = "Оплачено ✓" if created else "уже отмечено сегодня"
     return _redirect_back(form.get("next"), "/servers", msg)
+
+
+@router.post("/servers/{server_id}/image/delete", dependencies=[Depends(get_current_user)])
+async def delete_server_image(
+    request: Request, server_id: int, session: SessionDep
+):
+    """Remove the server's image and clear the column."""
+    server = await session.scalar(
+        select(Server).where(
+            Server.id == server_id, Server.owner_id == request.state.user.id
+        )
+    )
+    if server is None:
+        raise HTTPException(status_code=404)
+    try:
+        await delete_image("server", server_id)
+    except ValueError:
+        pass
+    server.image = None
+    await session.commit()
+    return RedirectResponse(f"/servers/{server_id}/edit?msg={quote('Картинка удалена')}", status_code=303)
 
 
 @router.get("/subscriptions", dependencies=[Depends(get_current_user)])
@@ -633,6 +691,8 @@ async def new_subscription(request: Request):
             "title": "Новая подписка",
             "action": "/subscriptions",
             "fields": _sub_fields(None),
+            "image_url": None,
+            "image_delete_url": None,
         },
     )
 
@@ -655,6 +715,8 @@ async def edit_subscription(
             "title": f"Подписка — {sub.name}",
             "action": f"/subscriptions/{sub_id}",
             "fields": _sub_fields(sub),
+            "image_url": _entity_image(sub.image, "subscription", sub.id),
+            "image_delete_url": f"/subscriptions/{sub_id}/image/delete",
         },
     )
 
@@ -670,6 +732,13 @@ async def create_subscription(request: Request, session: SessionDep):
     except (ValueError, IntegrityError) as exc:
         await session.rollback()
         return RedirectResponse(f"/subscriptions/new?error={quote(str(exc))}", status_code=303)
+    image = form.get("image")
+    if image is not None and (image.filename or "").strip():
+        try:
+            sub.image = await save_image(image, "subscription", sub.id)
+            await session.commit()
+        except ValueError as exc:
+            return RedirectResponse(f"/subscriptions/new?error={quote(str(exc))}", status_code=303)
     return RedirectResponse(f"/subscriptions?msg={quote('Подписка добавлена')}", status_code=303)
 
 
@@ -693,6 +762,13 @@ async def update_subscription(
     except (ValueError, IntegrityError) as exc:
         await session.rollback()
         return RedirectResponse(f"/subscriptions/{sub_id}/edit?error={quote(str(exc))}", status_code=303)
+    image = form.get("image")
+    if image is not None and (image.filename or "").strip():
+        try:
+            sub.image = await save_image(image, "subscription", sub_id)
+            await session.commit()
+        except ValueError as exc:
+            return RedirectResponse(f"/subscriptions/{sub_id}/edit?error={quote(str(exc))}", status_code=303)
     return RedirectResponse(f"/subscriptions?msg={quote('Подписка обновлена')}", status_code=303)
 
 
@@ -714,6 +790,10 @@ async def delete_subscription(
     )
     await session.delete(sub)
     await session.commit()
+    try:
+        await delete_image("subscription", sub_id)
+    except ValueError:
+        pass
     return RedirectResponse(f"/subscriptions?msg={quote('Подписка удалена')}", status_code=303)
 
 
@@ -737,6 +817,31 @@ async def pay_subscription(
     await session.commit()
     msg = "Оплачено ✓" if created else "уже отмечено сегодня"
     return _redirect_back(form.get("next"), "/subscriptions", msg)
+
+
+@router.post(
+    "/subscriptions/{sub_id}/image/delete", dependencies=[Depends(get_current_user)]
+)
+async def delete_subscription_image(
+    request: Request, sub_id: int, session: SessionDep
+):
+    """Remove the subscription's image and clear the column."""
+    sub = await session.scalar(
+        select(Subscription).where(
+            Subscription.id == sub_id, Subscription.owner_id == request.state.user.id
+        )
+    )
+    if sub is None:
+        raise HTTPException(status_code=404)
+    try:
+        await delete_image("subscription", sub_id)
+    except ValueError:
+        pass
+    sub.image = None
+    await session.commit()
+    return RedirectResponse(
+        f"/subscriptions/{sub_id}/edit?msg={quote('Картинка удалена')}", status_code=303
+    )
 
 
 @router.get("/expenses", dependencies=[Depends(get_current_user)])
@@ -771,6 +876,8 @@ async def new_expense(request: Request):
             "title": "Новый расход",
             "action": "/expenses",
             "fields": _expense_fields(None),
+            "image_url": None,
+            "image_delete_url": None,
         },
     )
 
@@ -794,6 +901,8 @@ async def edit_expense(
             "title": f"Расход — {expense.title}",
             "action": f"/expenses/{expense_id}",
             "fields": _expense_fields(expense),
+            "image_url": _entity_image(expense.image, "expense", expense.id),
+            "image_delete_url": f"/expenses/{expense_id}/image/delete",
         },
     )
 
@@ -809,6 +918,13 @@ async def create_expense(request: Request, session: SessionDep):
     except (ValueError, IntegrityError) as exc:
         await session.rollback()
         return RedirectResponse(f"/expenses/new?error={quote(str(exc))}", status_code=303)
+    image = form.get("image")
+    if image is not None and (image.filename or "").strip():
+        try:
+            expense.image = await save_image(image, "expense", expense.id)
+            await session.commit()
+        except ValueError as exc:
+            return RedirectResponse(f"/expenses/new?error={quote(str(exc))}", status_code=303)
     return RedirectResponse(f"/expenses?msg={quote('Расход добавлен')}", status_code=303)
 
 
@@ -833,6 +949,13 @@ async def update_expense(
     except (ValueError, IntegrityError) as exc:
         await session.rollback()
         return RedirectResponse(f"/expenses/{expense_id}/edit?error={quote(str(exc))}", status_code=303)
+    image = form.get("image")
+    if image is not None and (image.filename or "").strip():
+        try:
+            expense.image = await save_image(image, "expense", expense_id)
+            await session.commit()
+        except ValueError as exc:
+            return RedirectResponse(f"/expenses/{expense_id}/edit?error={quote(str(exc))}", status_code=303)
     return RedirectResponse(f"/expenses?msg={quote('Расход обновлён')}", status_code=303)
 
 
@@ -850,13 +973,43 @@ async def delete_expense(
         raise HTTPException(status_code=404)
     await session.delete(expense)
     await session.commit()
+    try:
+        await delete_image("expense", expense_id)
+    except ValueError:
+        pass
     return RedirectResponse(f"/expenses?msg={quote('Расход удалён')}", status_code=303)
+
+
+@router.post(
+    "/expenses/{expense_id}/image/delete", dependencies=[Depends(get_current_user)]
+)
+async def delete_expense_image(
+    request: Request, expense_id: int, session: SessionDep
+):
+    """Remove the expense's image and clear the column."""
+    expense = await session.scalar(
+        select(OneTimeExpense).where(
+            OneTimeExpense.id == expense_id,
+            OneTimeExpense.owner_id == request.state.user.id,
+        )
+    )
+    if expense is None:
+        raise HTTPException(status_code=404)
+    try:
+        await delete_image("expense", expense_id)
+    except ValueError:
+        pass
+    expense.image = None
+    await session.commit()
+    return RedirectResponse(
+        f"/expenses/{expense_id}/edit?msg={quote('Картинка удалена')}", status_code=303
+    )
 
 
 @router.get("/payments", dependencies=[Depends(get_current_user)])
 async def payments_page(request: Request, session: SessionDep):
     user = request.state.user
-    payments = await _owned_payments(session, user.id)
+    payments = await owned_payments(session, user.id)
     names = await _target_names(session, user.id)
     user_names = await _user_names(session)
     return templates.TemplateResponse(

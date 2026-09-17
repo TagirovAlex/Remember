@@ -25,7 +25,15 @@
         <tbody>
           {% for row in rows %}
             <tr>
-              {% for col in columns %}<td>{{ row.get(col.key, '') }}</td>{% endfor %}
+              {% for col in columns %}
+                <td>
+                  {% if col.key == 'image' %}
+                    {% if row.image %}<img class="entity-thumb" src="{{ row.image }}" alt="">{% else %}—{% endif %}
+                  {% else %}
+                    {{ row.get(col.key, '') }}
+                  {% endif %}
+                </td>
+              {% endfor %}
               <td class="actions">
                 {% if row.get('pay') and row.get('target_type') %}
                   {{ pay_button(row.target_type, row.id, next_url) }}
@@ -55,7 +63,10 @@
         <tbody>
           {% for row in rows %}
             <tr>
-              <td>{{ row.name }}</td>
+              <td>
+                {% if row.image %}<img class="entity-thumb" src="{{ row.image }}" alt="">{% endif %}
+                {{ row.name }}
+              </td>
               <td>{{ row.amount_rub|money }}</td>
               <td>{{ row.next_due }}</td>
               <td class="actions">{{ pay_button(row.target_type, row.target_id, next_url) }}</td>
