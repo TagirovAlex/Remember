@@ -9,7 +9,11 @@ Callback formats (compact, <=64 bytes):
     tg_cancel:{user_id}             — reject a Telegram binding
     menu:{action}                   — main menu navigation (main/subs/servers/pay/add/dash)
     menu:pay_kind:{target_type}     — choose what to pay in the menu
-    menu:add_kind:{target_type}     — choose what to add in the menu
+    menu:add_kind:{target_type}     -- choose what to add in /add FSM
+    view:{action}:{id}                 -- view card actions
+    confirm_amount_ok:{type}:{id}      -- confirm payment original amount
+    change_amount:{type}:{id}          -- change payment amount FSM trigger
+    amount_note:{type}:{id}            -- payment note FSM step
 """
 
 from aiogram.types import InlineKeyboardMarkup
@@ -312,3 +316,155 @@ def menu_digest_keyboard(digest: dict) -> InlineKeyboardMarkup:
     """Digest «Оплачено ✓» buttons plus a back-to-menu button."""
     entries = [*digest["due_today"], *digest["due_soon"], *digest["overdue"]]
     return menu_entries_keyboard(entries)
+
+VIEW_PREFIX = "view"
+CONFIRM_AMT_PREFIX = "confirm_amount_ok"
+CHANGE_AMT_PREFIX = "change_amount"
+AMOUNT_NOTE_PREFIX = "amount_note"
+
+VIEW_ACTIONS_PAY = "pay"
+VIEW_ACTIONS_PAUSE = "pause"
+VIEW_ACTIONS_RESUME = "resume"
+VIEW_ACTIONS_SHIFT = "shift"
+VIEW_ACTIONS_DELETE_CONFIRM = "delete:confirm"
+VIEW_ACTIONS_DELETE_CANCEL = "delete:cancel"
+
+
+def view_card_callback(action: str, item_id: int) -> str:
+    """Build callback_data for a view card action, e.g. view:pay:5."""
+    return f"{VIEW_PREFIX}:{action}:{item_id}"
+
+
+def parse_view_card_callback(data: str | None) -> tuple[str, int] | None:
+    """Parse view:{action}:{id}; return None for invalid payloads."""
+    if not data or not data.startswith(f"{VIEW_PREFIX}:"):
+        return None
+    parts = data.split(":")
+    if len(parts) != 3:
+        return None
+    action, raw_id = parts[1], parts[2]
+    try:
+        item_id = int(raw_id)
+    except ValueError:
+        return None
+    if item_id <= 0:
+        return None
+    return action, item_id
+
+
+def confirm_amount_callback(target_type: str, target_id: int) -> str:
+    """Build callback_data for confirming payment with original amount."""
+    return f"{CONFIRM_AMT_PREFIX}:{target_type}:{target_id}"
+
+
+def parse_confirm_amount_callback(data: str | None) -> tuple[str, int] | None:
+    """Parse confirm_amount_ok:{type}:{id}; return None for invalid payloads."""
+    if not data or not data.startswith(f"{CONFIRM_AMT_PREFIX}:"):
+        return None
+    parts = data.split(":")
+    if len(parts) != 3:
+        return None
+    target_type, raw_id = parts[1], parts[2]
+    if target_type not in VALID_TARGET_TYPES:
+        return None
+    try:
+        target_id = int(raw_id)
+    except ValueError:
+        return None
+    if target_id <= 0:
+        return None
+    return target_type, target_id
+
+
+def change_amount_callback(target_type: str, target_id: int) -> str:
+    """Build callback_data for changing payment amount."""
+    return f"{CHANGE_AMT_PREFIX}:{target_type}:{target_id}"
+
+
+def parse_change_amount_callback(data: str | None) -> tuple[str, int] | None:
+    """Parse change_amount:{type}:{id}; return None for invalid payloads."""
+    if not data or not data.startswith(f"{CHANGE_AMT_PREFIX}:"):
+        return None
+    parts = data.split(":")
+    if len(parts) != 3:
+        return None
+    target_type, raw_id = parts[1], parts[2]
+    if target_type not in VALID_TARGET_TYPES:
+        return None
+    try:
+        target_id = int(raw_id)
+    except ValueError:
+        return None
+    if target_id <= 0:
+        return None
+    return target_type, target_id
+
+
+def amount_note_callback(target_type: str, target_id: int) -> str:
+    """Build callback_data for submitting payment note after amount change."""
+    return f"{AMOUNT_NOTE_PREFIX}:{target_type}:{target_id}"
+
+
+def view_pay_button(item_id: int) -> InlineKeyboardMarkup:
+    """Single pay button from view card context."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=PAY_BUTTON_TEXT,
+        callback_data=view_card_callback(VIEW_ACTIONS_PAY, item_id),
+    )
+    return builder.as_markup()
+
+
+def view_card_keyboard(
+    entity_type: str,
+    item_id: int,
+    has_status: bool = False,
+    status_value: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Action buttons for a view card message.
+
+    entity_type: 'server', 'subscription', or 'expense'
+    has_status: whether pause/resume buttons should be shown
+    status_value: current status ('active', 'paused', etc.)
+    """
+    builder = InlineKeyboardBuilder()
+
+    # Row 1: Pay + Pause/Resume
+    builder.button(
+        text=PAY_BUTTON_TEXT,
+        callback_data=view_card_callback(VIEW_ACTIONS_PAY, item_id),
+    )
+    if has_status:
+        if status_value == "paused":
+            resume_text = "▶ Включить"
+            builder.button(
+                text=resume_text,
+                callback_data=view_card_callback(VIEW_ACTIONS_RESUME, item_id),
+            )
+        else:
+            pause_text = "⏸ Пауза"
+            builder.button(
+                text=pause_text,
+                callback_data=view_card_callback(VIEW_ACTIONS_PAUSE, item_id),
+            )
+    builder.adjust(3)
+
+    # Row 2: Shift date + Delete
+    shift_text = "⏱ Сдвинуть дату"
+    delete_text = "🗑️ Удалить"
+    builder.button(
+        text=shift_text,
+        callback_data=view_card_callback(VIEW_ACTIONS_SHIFT, item_id),
+    )
+    builder.button(
+        text=delete_text,
+        callback_data=view_card_callback(VIEW_ACTIONS_DELETE_CONFIRM, item_id),
+    )
+    builder.adjust(2)
+
+    # Row 3: Back to menu
+    menu_text = "🏠 Меню"
+    builder.button(text=menu_text, callback_data=menu_callback("main"))
+    builder.adjust(1)
+
+    return builder.as_markup()

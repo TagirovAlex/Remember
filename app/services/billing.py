@@ -102,8 +102,13 @@ async def mark_paid_once(
     paid_by: int | None = None,
     *,
     owner_id: int,
+    payment_amount: int | None = None,
 ) -> tuple[Payment, bool]:
     """Mark a payment once per day, returning (payment, created).
+
+    When ``payment_amount`` is provided it overrides the stored amount for
+    the Payment record only -- the entity's ``amount_rub`` (tariff rate) stays
+    untouched.  Pass ``None`` to use the entity default.
 
     When a Payment already exists for (target_type, target_id, paid_date) the
     existing row is returned as-is with created=False and next_due is not moved.
@@ -118,8 +123,9 @@ async def mark_paid_once(
     )
     if existing is not None:
         return existing, False
+    effective_amount = amount_rub if payment_amount is None else payment_amount
     payment = await mark_paid(
-        session, target_type, target_id, amount_rub, paid_date, notes, paid_by,
+        session, target_type, target_id, effective_amount, paid_date, notes, paid_by,
         owner_id=owner_id,
     )
     return payment, True
