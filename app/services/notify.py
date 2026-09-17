@@ -106,6 +106,20 @@ def _render_section(lines: list[str], emoji: str, title: str, entries: list[dict
     lines.append("")
 
 
+def render_entries(title: str, entries: list[dict], empty_text: str) -> str:
+    """Render a titled list of entries as «name — amount — due» lines."""
+    lines = [title, ""]
+    if not entries:
+        lines.append(empty_text)
+    else:
+        for entry in entries:
+            due = entry["next_due"].strftime("%d.%m.%Y")
+            lines.append(
+                f"• {entry['name']} — {fmt_money(entry['amount_rub'])} — до {due}"
+            )
+    return "\n".join(lines).rstrip()
+
+
 def render_digest(digest: dict, soon_days: int | None = None) -> str:
     """Build plain-text digest message from a collect_digest result."""
     lines: list[str] = []

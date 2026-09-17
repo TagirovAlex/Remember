@@ -7,6 +7,9 @@ Callback formats (compact, <=64 bytes):
     exp_cat:{category}              — choose an expense category in /addexpense FSM
     tg_confirm:{user_id}            — confirm a Telegram binding
     tg_cancel:{user_id}             — reject a Telegram binding
+    menu:{action}                   — main menu navigation (main/subs/servers/pay/add/dash)
+    menu:pay_kind:{target_type}     — choose what to pay in the menu
+    menu:add_kind:{target_type}     — choose what to add in the menu
 """
 
 from aiogram.types import InlineKeyboardMarkup
@@ -18,6 +21,11 @@ PERIOD_PREFIX = "period"
 EXP_CAT_PREFIX = "exp_cat"
 TG_CONFIRM_PREFIX = "tg_confirm"
 TG_CANCEL_PREFIX = "tg_cancel"
+MENU_PREFIX = "menu"
+
+MENU_ACTIONS = ("main", "subs", "servers", "pay", "add", "dash")
+
+MENU_BACK_TEXT = "🏠 Меню"
 
 VALID_TARGET_TYPES = ("server", "subscription")
 VALID_PERIODS = ("monthly", "quarterly", "yearly")
@@ -198,3 +206,109 @@ def confirm_binding_keyboard(user_id: int) -> InlineKeyboardMarkup:
     builder.button(text="Отменить", callback_data=cancel_binding_callback(user_id))
     builder.adjust(2)
     return builder.as_markup()
+
+
+def menu_callback(action: str) -> str:
+    """Build callback_data for a main-menu action, e.g. menu:subs."""
+    if action not in MENU_ACTIONS:
+        raise ValueError(f"unknown menu action: {action}")
+    return f"{MENU_PREFIX}:{action}"
+
+
+def parse_menu_callback(data: str | None) -> str | None:
+    """Parse menu:{action}; return None for invalid payloads."""
+    if not data or not data.startswith(f"{MENU_PREFIX}:"):
+        return None
+    action = data.split(":", 1)[1]
+    return action if action in MENU_ACTIONS else None
+
+
+def menu_pay_kind_callback(target_type: str) -> str:
+    """Build callback_data for choosing a pay kind, e.g. menu:pay_kind:server."""
+    if target_type not in VALID_TARGET_TYPES:
+        raise ValueError(f"unknown target_type: {target_type}")
+    return f"{MENU_PREFIX}:pay_kind:{target_type}"
+
+
+def parse_menu_pay_kind_callback(data: str | None) -> str | None:
+    """Parse menu:pay_kind:{target_type}; return None for invalid payloads."""
+    if not data or not data.startswith(f"{MENU_PREFIX}:pay_kind:"):
+        return None
+    parts = data.split(":")
+    if len(parts) != 3:
+        return None
+    target_type = parts[2]
+    return target_type if target_type in VALID_TARGET_TYPES else None
+
+
+def menu_add_kind_callback(target_type: str) -> str:
+    """Build callback_data for choosing an add kind, e.g. menu:add_kind:server."""
+    if target_type not in VALID_TARGET_TYPES:
+        raise ValueError(f"unknown target_type: {target_type}")
+    return f"{MENU_PREFIX}:add_kind:{target_type}"
+
+
+def parse_menu_add_kind_callback(data: str | None) -> str | None:
+    """Parse menu:add_kind:{target_type}; return None for invalid payloads."""
+    if not data or not data.startswith(f"{MENU_PREFIX}:add_kind:"):
+        return None
+    parts = data.split(":")
+    if len(parts) != 3:
+        return None
+    target_type = parts[2]
+    return target_type if target_type in VALID_TARGET_TYPES else None
+
+
+def main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Main menu: lists, payments, add and the dashboard."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📋 Подписки", callback_data=menu_callback("subs"))
+    builder.button(text="🖥 Серверы", callback_data=menu_callback("servers"))
+    builder.button(text="💳 Внести оплату", callback_data=menu_callback("pay"))
+    builder.button(text="➕ Добавить", callback_data=menu_callback("add"))
+    builder.button(text="📊 Дашборд", callback_data=menu_callback("dash"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def back_to_menu_keyboard() -> InlineKeyboardMarkup:
+    """A single «🏠 Меню» button returning to the main menu."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text=MENU_BACK_TEXT, callback_data=menu_callback("main"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def menu_kind_keyboard(action: str) -> InlineKeyboardMarkup:
+    """Choose server/subscription for the pay or add flow from the menu."""
+    if action == "pay":
+        kind = menu_pay_kind_callback
+    elif action == "add":
+        kind = menu_add_kind_callback
+    else:
+        raise ValueError(f"unknown menu kind action: {action}")
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Подписка", callback_data=kind("subscription"))
+    builder.button(text="Сервер", callback_data=kind("server"))
+    builder.button(text=MENU_BACK_TEXT, callback_data=menu_callback("main"))
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def menu_entries_keyboard(entries: list[dict]) -> InlineKeyboardMarkup:
+    """«Оплачено ✓» per entry plus a back-to-menu button."""
+    builder = InlineKeyboardBuilder()
+    for entry in entries:
+        builder.button(
+            text=PAY_BUTTON_TEXT,
+            callback_data=pay_callback(entry["target_type"], entry["target_id"]),
+        )
+    builder.button(text=MENU_BACK_TEXT, callback_data=menu_callback("main"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def menu_digest_keyboard(digest: dict) -> InlineKeyboardMarkup:
+    """Digest «Оплачено ✓» buttons plus a back-to-menu button."""
+    entries = [*digest["due_today"], *digest["due_soon"], *digest["overdue"]]
+    return menu_entries_keyboard(entries)

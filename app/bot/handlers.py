@@ -16,14 +16,22 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.bot.keyboards import (
     PERIOD_LABELS,
     add_kind_keyboard,
+    back_to_menu_keyboard,
     binding_notice_text,
     confirm_binding_keyboard,
     digest_pay_keyboard,
     expense_category_keyboard,
+    main_menu_keyboard,
+    menu_digest_keyboard,
+    menu_entries_keyboard,
+    menu_kind_keyboard,
     parse_add_kind_callback,
     parse_cancel_binding_callback,
     parse_confirm_binding_callback,
     parse_expense_category_callback,
+    parse_menu_add_kind_callback,
+    parse_menu_callback,
+    parse_menu_pay_kind_callback,
     parse_pay_callback,
     parse_period_callback,
     pay_keyboard,
@@ -42,6 +50,7 @@ from app.services.billing import (
 from app.services.notify import (
     fmt_money,
     render_digest,
+    render_entries,
     render_history,
     render_monthly_summary,
     render_search,
@@ -60,6 +69,7 @@ BINDING_HINT = (
 HELP_TEXT = (
     "Я — Remember, веду учёт серверов и подписок.\n\n"
     "Команды:\n"
+    "/menu — главное меню\n"
     "/today — платежи на сегодня\n"
     "/soon — платежи на ближайшие N дней\n"
     "/overdue — просроченные платежи\n"
@@ -73,6 +83,11 @@ HELP_TEXT = (
     "/unsubscribe — отписаться от дайджестов\n"
     "/help — справка\n\n"
     "По кнопке «Оплачено ✓» платёж фиксируется, дата сдвигается вперёд."
+)
+
+MAIN_MENU_TEXT = (
+    "📋 Главное меню\n\n"
+    "Подписки, серверы, оплаты и добавление — всё здесь."
 )
 
 
@@ -175,7 +190,8 @@ async def cmd_start(message: Message) -> None:
         await session.commit()
     if user is not None and user.telegram_id_confirmed:
         await message.answer(
-            f"Привет, {user.username}! Дайджесты и команды будут приходить сюда."
+            f"Привет, {user.username}! Дайджесты и команды будут приходить сюда.",
+            reply_markup=main_menu_keyboard(),
         )
     elif user is not None and user.telegram_id is not None:
         await message.answer(
@@ -188,7 +204,150 @@ async def cmd_start(message: Message) -> None:
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    await message.answer(HELP_TEXT)
+    await message.answer(HELP_TEXT, reply_markup=main_menu_keyboard())
+
+
+@router.message(Command("menu"))
+async def cmd_menu(message: Message) -> None:
+    async with session_factory() as session:
+        user = await _owner(session, message.chat.id)
+        await session.commit()
+        if user is None:
+            await message.answer(BINDING_HINT)
+            return
+    await message.answer(MAIN_MENU_TEXT, reply_markup=main_menu_keyboard())
+
+
+async def _menu_owner(callback: CallbackQuery) -> User | None:
+    """Resolve the chat owner for a menu callback, or None when not bound."""
+    async with session_factory() as session:
+        chat_id = callback.message.chat.id if callback.message is not None else 0
+        user = await _owner(session, chat_id)
+        await session.commit()
+        return user
+
+
+async def _menu_binding_hint(callback: CallbackQuery) -> None:
+    await callback.answer("Сначала привяжите аккаунт")
+    if callback.message is not None:
+        try:
+            await callback.message.answer(BINDING_HINT)
+        except TelegramBadRequest:
+            return
+
+
+async def _menu_edit(
+    callback: CallbackQuery, text: str, keyboard: InlineKeyboardMarkup
+) -> None:
+    """Replace the current menu message, keeping a single message in chat."""
+    if callback.message is None:
+        return
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest:
+        return
+
+
+async def _menu_list(
+    session: AsyncSession, owner_id: int, target_type: str
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Active items of one kind with pay buttons and a back-to-menu button."""
+    if target_type == "server":
+        model = Server
+        active = Server.is_active.is_(True)
+        title, empty = "🖥 Серверы", "Серверов нет"
+    else:
+        model = Subscription
+        active = Subscription.status == "active"
+        title, empty = "📡 Подписки", "Подписок нет"
+    items = (
+        await session.scalars(
+            select(model)
+            .where(model.owner_id == owner_id, active)
+            .order_by(model.name)
+        )
+    ).all()
+    entries = [
+        {
+            "name": item.name,
+            "amount_rub": item.amount_rub,
+            "next_due": item.next_due,
+            "target_type": target_type,
+            "target_id": item.id,
+        }
+        for item in items
+    ]
+    return render_entries(title, entries, empty), menu_entries_keyboard(entries)
+
+
+@router.callback_query(F.data.startswith("menu:"))
+async def on_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    action = parse_menu_callback(callback.data)
+    if action is not None:
+        await _menu_action(callback, action)
+        return
+    target_type = parse_menu_pay_kind_callback(callback.data)
+    if target_type is not None:
+        await _menu_pay_kind(callback, target_type)
+        return
+    target_type = parse_menu_add_kind_callback(callback.data)
+    if target_type is not None:
+        await _menu_add_kind(callback, state, target_type)
+        return
+    await callback.answer("Некорректная кнопка")
+
+
+async def _menu_action(callback: CallbackQuery, action: str) -> None:
+    user = await _menu_owner(callback)
+    if user is None:
+        await _menu_binding_hint(callback)
+        return
+    if action == "main":
+        await _menu_edit(callback, MAIN_MENU_TEXT, main_menu_keyboard())
+    elif action in ("pay", "add"):
+        text = "Что оплачиваем?" if action == "pay" else "Что добавляем?"
+        await _menu_edit(callback, text, menu_kind_keyboard(action))
+    elif action in ("subs", "servers"):
+        target_type = "subscription" if action == "subs" else "server"
+        async with session_factory() as session:
+            text, keyboard = await _menu_list(session, user.id, target_type)
+        await _menu_edit(callback, text, keyboard)
+    else:
+        async with session_factory() as session:
+            soon_days = await remind_soon_days(session)
+            digest = await collect_digest(
+                session, await today(session), soon_days, owner_id=user.id
+            )
+        text = f"📊 Дашборд\n\n{render_digest(digest, soon_days=soon_days)}"
+        await _menu_edit(callback, text, menu_digest_keyboard(digest))
+
+
+async def _menu_pay_kind(callback: CallbackQuery, target_type: str) -> None:
+    user = await _menu_owner(callback)
+    if user is None:
+        await _menu_binding_hint(callback)
+        return
+    async with session_factory() as session:
+        text, keyboard = await _menu_list(session, user.id, target_type)
+    await _menu_edit(callback, text, keyboard)
+
+
+async def _menu_add_kind(
+    callback: CallbackQuery, state: FSMContext, target_type: str
+) -> None:
+    user = await _menu_owner(callback)
+    if user is None:
+        await _menu_binding_hint(callback)
+        return
+    await state.update_data(owner_id=user.id, target_type=target_type)
+    await state.set_state(AddStates.name)
+    await callback.answer("Сервер" if target_type == "server" else "Подписка")
+    if callback.message is None:
+        return
+    try:
+        await callback.message.edit_text("Название:")
+    except TelegramBadRequest:
+        return
 
 
 @router.message(Command("subscribe"))
@@ -751,7 +910,9 @@ async def on_pay(callback: CallbackQuery) -> None:
             f"Следующий платёж: {entity.next_due:%d.%m.%Y}"
         )
         try:
-            await callback.message.edit_text(digest_text)
+            await callback.message.edit_text(
+                digest_text, reply_markup=back_to_menu_keyboard()
+            )
         except TelegramBadRequest:
             return
 
