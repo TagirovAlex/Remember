@@ -7,6 +7,8 @@ name = "remember"
 version = "0.1.0"
 description = "Remember — учёт серверов, подписок и платежей"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+readme = "README.md"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
@@ -23,6 +25,10 @@ dependencies = [
     "httpx[socks]",
     "Pillow",
 ]
+
+[project.urls]
+Homepage = "https://github.com/<username>/remember"
+Repository = "https://github.com/<username>/remember"
 
 [project.optional-dependencies]
 dev = [

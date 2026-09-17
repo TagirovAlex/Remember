@@ -1,5 +1,9 @@
 # Remember — учёт серверов, подписок и платежей
 
+![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F) ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white) ![Uvicorn](https://img.shields.io/badge/Uvicorn-499848) ![Jinja2](https://img.shields.io/badge/Jinja2-B41717?logo=jinja&logoColor=white) ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy_2-D71F00) ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white) ![Pydantic](https://img.shields.io/badge/Pydantic_2-EA454C) ![aiogram](https://img.shields.io/badge/aiogram_3-2CA5E0)
+
+![APScheduler](https://img.shields.io/badge/APScheduler-6BA81E) ![httpx/SOCKS5](https://img.shields.io/badge/httpx/SOCKS5-5C5C5C) ![Pillow](https://img.shields.io/badge/Pillow-1C7ED6) ![Argon2](https://img.shields.io/badge/Argon2-7B2CBF) ![pytest](https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white) ![Ruff](https://img.shields.io/badge/Ruff-F04E30?logo=ruff&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![Telegram Bot API](https://img.shields.io/badge/Telegram_Bot_API-26A5E4?logo=telegram&logoColor=white) ![Deploy: Caddy/nginx](https://img.shields.io/badge/Deploy-Caddy/nginx-2C2C2C)
+
 Единая система для учёта арендуемых GPU-серверов, VM-хостов, подписок на сервисы
 и разовых расходов. Отвечает на два вопроса: **«что где живёт»** и **«что и когда
 платить»**. Напоминания приходят в Telegram (доступ через SOCKS5-прокси),
@@ -201,3 +205,10 @@ ruff check .
 
 Бизнес-логика (rollover, digest, суммы) изолирована в чистых функциях — тестируется
 без БД и сети. См. `AGENTS.md` о том, как ведутся изменения в этом репозитории.
+
+## Лицензия
+
+Проект распространяется под лицензией MIT. См. файл [LICENSE](LICENSE).
+
+Код можно свободно использовать, модифицировать и распространять при условии
+сохранения уведомления об авторстве (copyright notice) в копиях.
