@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>Финансовые отчёты</h1>
+</div>
+
+<form method="post" class="form-card" style="margin-bottom:24px;">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <label for="month">Период (YYYY-MM):</label>
+    <input type="month" id="month" name="month" value="{{ default_month }}"
+           style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--text);font-size:14px;">
+    <button type="submit" class="btn">Генерировать</button>
+  </div>
+</form>
+
+{% if report %}
+<div style="margin-top:8px;">
+  <section class="cards" style="margin-bottom:28px;">
+    <div class="card">
+      <div class="card-label">Оплачено всего</div>
+      <div class="card-value">{{ report.total_paid|money }}</div>
+    </div>
+  </section>
+
+  <div class="form-card" style="margin-bottom:20px;">
+    <h3 style="margin-top:0;margin-bottom:12px;font-size:16px;">Разбивка по типу</h3>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr><th>Тип</th><th>Сумма</th><th>Кол-во операций</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Серверы и подписки</td>
+            <td>{{ report.by_type.server_subscription.sum|money }}</td>
+            <td>{{ report.by_type.server_subscription.count }}</td>
+          </tr>
+          <tr>
+            <td>Разовые расходы</td>
+            <td>{{ report.by_type.expense.sum|money }}</td>
+            <td>{{ report.by_type.expense.count }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if report.top_providers %}
+  <div class="form-card" style="margin-bottom:20px;">
+    <h3 style="margin-top:0;margin-bottom:12px;font-size:16px;">Топ провайдеров</h3>
+    <ol style="margin:0;padding-left:24px;line-height:1.8;">
+      {% for p in report.top_providers %}
+        <li>{{ p.provider }} — {{ p.sum|money }} ({{ p.count }} плат{{ 'ежа' if 11 <= p.count % 100 <= 19 else 'еж' if p.count % 10 == 1 else 'ежа' if 2 <= p.count % 10 <= 4 else 'ежей' }})</li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% endif %}
+
+  {% if report.top_categories %}
+  <div class="form-card" style="margin-bottom:20px;">
+    <h3 style="margin-top:0;margin-bottom:12px;font-size:16px;">Топ категорий расходов</h3>
+    <ol style="margin:0;padding-left:24px;line-height:1.8;">
+      {% for c in report.top_categories %}
+        <li>{{ c.category }} — {{ c.sum|money }}</li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% endif %}
+
+  {% if report.forecast_remaining > 0 %}
+  <div class="form-card" style="margin-bottom:20px;">
+    <h3 style="margin-top:0;margin-bottom:8px;font-size:16px;">Прогноз до конца месяца</h3>
+    <p style="margin:0;font-size:18px;">{{ report.forecast_remaining|money }} ₽</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

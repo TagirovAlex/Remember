@@ -20,6 +20,7 @@
             <a class="nav-link {{ 'active' if path.startswith('/subscriptions') else '' }}" href="/subscriptions">Подписки</a>
             <a class="nav-link {{ 'active' if path.startswith('/expenses') else '' }}" href="/expenses">Расходы</a>
             <a class="nav-link {{ 'active' if path.startswith('/payments') else '' }}" href="/payments">Платежи</a>
+            <a class="nav-link {{ 'active' if path.startswith('/reports') else '' }}" href="/reports">Отчёты</a>
             {% if request.state.user.role == 'admin' %}
               <a class="nav-link {{ 'active' if path.startswith('/users') else '' }}" href="/users">Пользователи</a>
               <a class="nav-link {{ 'active' if path.startswith('/backups') else '' }}" href="/backups">Бэкапы</a>

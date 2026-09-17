@@ -38,7 +38,7 @@ from app.schemas import (
 from app.security import hash_password, verify_password
 from app.services import settings as settings_svc
 from app.services.backup import create_backup, list_backups, resolve_backup
-from app.services.billing import collect_digest, mark_paid_once, owned_payments
+from app.services.billing import collect_digest, mark_paid_once, monthly_report, owned_payments
 from app.services.images import delete_image, image_path, image_url, save_image
 from app.services.notify import fmt_money
 
@@ -446,6 +446,14 @@ async def dashboard(request: Request, session: SessionDep):
     payments = await owned_payments(session, user.id, limit=10)
     names = await _target_names(session, user.id)
     user_names = await _user_names(session)
+    recent_expenses = (
+        await session.scalars(
+            select(OneTimeExpense)
+            .where(OneTimeExpense.owner_id == user.id)
+            .order_by(OneTimeExpense.paid_date.desc())
+            .limit(5)
+        )
+    ).all()
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -456,6 +464,10 @@ async def dashboard(request: Request, session: SessionDep):
             "servers": [_server_row(s) for s in servers],
             "subscriptions": [_sub_row(s) for s in subs],
             "recent_payments": [_payment_row(p, names, user_names) for p in payments],
+            "recent_expenses": [
+                {"name": e.title, "amount": fmt_money(e.amount_rub), "paid_date": e.paid_date.strftime("%d.%m.%Y"), "category": e.category or "—"}
+                for e in recent_expenses
+            ],
         },
     )
 
@@ -1451,3 +1463,48 @@ async def backups_delete(name: str):
         raise HTTPException(status_code=404)
     path.unlink(missing_ok=True)
     return RedirectResponse("/backups?msg=Бэкап удалён", status_code=303)
+
+
+def _parse_month(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    try:
+        parts = raw.strip().split("-", maxsplit=1)
+        if len(parts) != 2:
+            return None
+        year, month = int(parts[0]), int(parts[1])
+        return date(year, month, 1)
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("/reports", dependencies=[Depends(get_current_user)])
+async def reports_page(request: Request, session: SessionDep):
+    now = await _today(session)
+    default_month = now.replace(day=1).isoformat()
+    return templates.TemplateResponse(
+        request,
+        "reports.html",
+        {
+            "default_month": default_month,
+            "report": None,
+        },
+    )
+
+
+@router.post("/reports", dependencies=[Depends(get_current_user)])
+async def reports_submit(request: Request, session: SessionDep):
+    form = await request.form()
+    month_str = str(form.get("month") or "").strip()
+    user = request.state.user
+    ref_month = _parse_month(month_str)
+    if ref_month is None:
+        now = await _today(session)
+        ref_month = now.replace(day=1)
+    today = await _today(session)
+    report = await monthly_report(session, user.id, ref_month, today)
+    return templates.TemplateResponse(
+        request,
+        "reports.html",
+        {"default_month": ref_month.isoformat(), "report": report},
+    )

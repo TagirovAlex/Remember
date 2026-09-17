@@ -63,4 +63,27 @@
 {% else %}
 <p>Платежей пока нет.</p>
 {% endif %}
+
+<h2>📌 Последние расходы</h2>
+{% if recent_expenses %}
+<div class="table-responsive">
+  <table class="data-table">
+    <thead>
+      <tr><th>Название</th><th>Сумма</th><th>Дата</th><th>Категория</th></tr>
+    </thead>
+    <tbody>
+      {% for row in recent_expenses %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td>{{ row.amount }}</td>
+          <td>{{ row.paid_date }}</td>
+          <td>{{ row.category }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p>Расходов пока нет.</p>
+{% endif %}
 {% endblock %}

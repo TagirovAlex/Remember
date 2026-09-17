@@ -353,6 +353,126 @@ async def monthly_summary(
     }
 
 
+def _month_name(month_date: date) -> str:
+    """Return a Russian month label like 'Сентябрь 2026'."""
+    names = (
+        "",
+        "Январь",
+        "Февраль",
+        "Март",
+        "Апрель",
+        "Май",
+        "Июнь",
+        "Июль",
+        "Август",
+        "Сентябрь",
+        "Октябрь",
+        "Ноябрь",
+        "Декабрь",
+    )
+    return f"{names[month_date.month]} {month_date.year}"
+
+
+async def monthly_report(
+    session: AsyncSession,
+    owner_id: int,
+    ref_month: date,
+    today: date | None = None,
+) -> dict:
+    """Compute a detailed financial report for one month.
+
+    Returns a dict suitable for template rendering with keys:
+      - month_label (Russian string like 'Сентябрь 2026')
+      - total_paid, by_type (server_subscription / expense), top_providers,
+        top_categories, forecast_remaining
+    """
+    first, last = _month_bounds(ref_month)
+    if today is None:
+        today = date.today()  # noqa: DTZ011
+
+    # Recurring payments
+    payments = await _payments_in_range(session, owner_id, first, last)
+    recurring_sum = sum(p.amount_rub for p in payments)
+
+    # One-time expenses
+    expenses = await _expenses_in_range(session, owner_id, first, last)
+    expense_sum = sum(e.amount_rub for e in expenses)
+
+    total_paid = recurring_sum + expense_sum
+
+    # Top providers for recurring payments
+    provider_map: dict[str, tuple[int, int]] = {}
+    for p in payments:
+        provider = "Неизвестно"
+        if p.target_type == "server":
+            srv = await session.get(Server, p.target_id)
+            if srv and srv.owner_id == owner_id:
+                provider = srv.provider or "Неизвестно"
+        elif p.target_type == "subscription":
+            sub = await session.get(Subscription, p.target_id)
+            if sub and sub.owner_id == owner_id:
+                provider = sub.provider or "Неизвестно"
+        entry = provider_map.get(provider, (0, 0))
+        provider_map[provider] = (entry[0] + p.amount_rub, entry[1] + 1)
+
+    top_providers_list = sorted(provider_map.items(), key=lambda kv: (-kv[1][0], kv[0]))
+    top_providers: list[dict] = []
+    remaining_sum = 0
+    remaining_count = 0
+    for name, (s, c) in top_providers_list[:5]:
+        top_providers.append({"provider": name, "sum": s, "count": c})
+    if len(top_providers_list) > 5:
+        for name, (s, c) in top_providers_list[5:]:
+            remaining_sum += s
+            remaining_count += c
+        top_providers.append({"provider": "Остальные", "sum": remaining_sum, "count": remaining_count})
+
+    # Top categories for one-time expenses
+    cat_map: dict[str, int] = {}
+    for e in expenses:
+        cat = e.category or "Без категории"
+        cat_map[cat] = cat_map.get(cat, 0) + e.amount_rub
+    top_cats_list = sorted(cat_map.items(), key=lambda kv: (-kv[1], kv[0]))
+    top_categories = [{"category": n, "sum": s} for n, s in top_cats_list[:3]]
+
+    # Forecast: next_due between today and end of month
+    forecast_sum = 0
+    if today <= last:
+        act_servers = (
+            await session.scalars(
+                select(Server).where(
+                    Server.is_active.is_(True),
+                    Server.owner_id == owner_id,
+                    Server.next_due >= today,
+                    Server.next_due <= last,
+                )
+            )
+        ).all()
+        act_subs = (
+            await session.scalars(
+                select(Subscription).where(
+                    Subscription.status == "active",
+                    Subscription.owner_id == owner_id,
+                    Subscription.next_due >= today,
+                    Subscription.next_due <= last,
+                )
+            )
+        ).all()
+        forecast_sum = sum(s.amount_rub for s in act_servers) + sum(s.amount_rub for s in act_subs)
+
+    return {
+        "month_label": _month_name(ref_month),
+        "total_paid": total_paid,
+        "by_type": {
+            "server_subscription": {"sum": recurring_sum, "count": len(payments)},
+            "expense": {"sum": expense_sum, "count": len(expenses)},
+        },
+        "top_providers": top_providers,
+        "top_categories": top_categories,
+        "forecast_remaining": forecast_sum,
+    }
+
+
 async def search_owned(
     session: AsyncSession, owner_id: int, query: str, limit: int = 15
 ) -> list[dict]:
