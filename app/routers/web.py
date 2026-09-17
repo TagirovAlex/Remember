@@ -38,7 +38,13 @@ from app.schemas import (
 from app.security import hash_password, verify_password
 from app.services import settings as settings_svc
 from app.services.backup import create_backup, list_backups, resolve_backup
-from app.services.billing import collect_digest, mark_paid_once, monthly_report, owned_payments
+from app.services.billing import (
+    collect_digest,
+    mark_paid_once,
+    monthly_report,
+    owned_payments,
+    period_report,
+)
 from app.services.images import delete_image, image_path, image_url, save_image
 from app.services.notify import fmt_money
 
@@ -1478,16 +1484,55 @@ def _parse_month(raw: str | None) -> date | None:
         return None
 
 
+def _parse_date(raw: str | None) -> date | None:
+    """Return a parsed date from an ISO string (YYYY-MM-DD), or None."""
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw.strip())
+    except (ValueError, TypeError):
+        return None
+
+
 @router.get("/reports", dependencies=[Depends(get_current_user)])
 async def reports_page(request: Request, session: SessionDep):
+    """Show the report form, or results when query parameters are provided."""
     now = await _today(session)
     default_month = now.replace(day=1).isoformat()
+    year = request.query_params.get("year")
+    month = request.query_params.get("month")
+    if year and month:
+        ref_month = date(int(year), int(month), 1)
+        today = await _today(session)
+        report = await monthly_report(session, request.state.user.id, ref_month, today)
+        return templates.TemplateResponse(
+            request,
+            "reports.html",
+            {"default_month": ref_month.isoformat(), "report": report, "mode": "current_month"},
+        )
+    day_from = request.query_params.get("day_from")
+    day_to = request.query_params.get("day_to")
+    year_from = request.query_params.get("year_from")
+    month_from = request.query_params.get("month_from")
+    year_to = request.query_params.get("year_to")
+    month_to = request.query_params.get("month_to")
+    if any(v is not None for v in (year_from, month_from, day_from, year_to, month_to, day_to)):
+        start = date(int(year_from), int(month_from), int(day_from))
+        end = date(int(year_to), int(month_to), int(day_to))
+        today = await _today(session)
+        report = await period_report(session, request.state.user.id, start, end, today)
+        return templates.TemplateResponse(
+            request,
+            "reports.html",
+            {"report": report, "mode": "custom_period"},
+        )
     return templates.TemplateResponse(
         request,
         "reports.html",
         {
             "default_month": default_month,
             "report": None,
+            "mode": "current_month",
         },
     )
 
@@ -1495,16 +1540,40 @@ async def reports_page(request: Request, session: SessionDep):
 @router.post("/reports", dependencies=[Depends(get_current_user)])
 async def reports_submit(request: Request, session: SessionDep):
     form = await request.form()
-    month_str = str(form.get("month") or "").strip()
+    action = str(form.get("action") or "").strip()
     user = request.state.user
+    today = await _today(session)
+
+    if action == "custom_period":
+        d_from = _parse_date(form.get("start_date"))
+        d_to = _parse_date(form.get("end_date"))
+        if d_from is None or d_to is None:
+            now = await _today(session)
+            ref_month = now.replace(day=1)
+            report = await monthly_report(session, user.id, ref_month, today)
+            return templates.TemplateResponse(
+                request,
+                "reports.html",
+                {"default_month": ref_month.isoformat(), "report": report, "mode": "current_month"},
+            )
+        if d_from > d_to:
+            d_from, d_to = d_to, d_from
+        report = await period_report(session, user.id, d_from, d_to, today)
+        return templates.TemplateResponse(
+            request,
+            "reports.html",
+            {"report": report, "mode": "custom_period"},
+        )
+
+    # Default / current_month action (legacy support for bare month field)
+    month_str = str(form.get("month") or "").strip()
     ref_month = _parse_month(month_str)
     if ref_month is None:
         now = await _today(session)
         ref_month = now.replace(day=1)
-    today = await _today(session)
     report = await monthly_report(session, user.id, ref_month, today)
     return templates.TemplateResponse(
         request,
         "reports.html",
-        {"default_month": ref_month.isoformat(), "report": report},
+        {"default_month": ref_month.isoformat(), "report": report, "mode": "current_month"},
     )

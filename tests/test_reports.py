@@ -1,4 +1,4 @@
-"""Tests for reports functionality: monthly_report function and /reports page."""
+"""Tests for reports functionality: monthly_report, period_report and /reports page."""
 
 from datetime import date
 
@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.models import Base, OneTimeExpense, Payment, Server, Subscription, User
 from app.security import hash_password
-from app.services.billing import monthly_report
+from app.services.billing import monthly_report, period_report
 
 
 @pytest.fixture
@@ -252,6 +252,84 @@ async def test_monthly_report_empty_month(session):
     assert result["forecast_remaining"] == 0
 
 
+# ---- Business logic tests for period_report ----
+
+
+async def test_period_report_basic_totals(session):
+    """period_report aggregates payments across a date range."""
+    s1 = Server(name="Srv-1", kind="gpu", provider="P", amount_rub=5000,
+                period="monthly", next_due=date(2026, 9, 1), owner_id=1, is_active=True)
+    s2 = Server(name="Srv-2", kind="vm", provider="Q", amount_rub=5000,
+                period="monthly", next_due=date(2026, 10, 1), owner_id=1, is_active=True)
+    session.add_all([s1, s2])
+    await session.commit()
+    await session.refresh(s1); await session.refresh(s2)
+
+    # One payment per server within range
+    session.add(Payment(target_type="server", target_id=s1.id, amount_rub=5000,
+                        due_date=date(2026, 9, 1), paid_date=date(2026, 9, 1)))
+    session.add(Payment(target_type="server", target_id=s2.id, amount_rub=5000,
+                        due_date=date(2026, 10, 1), paid_date=date(2026, 10, 1)))
+    session.add(OneTimeExpense(title="Exp1", amount_rub=300, paid_date=date(2026, 9, 15),
+                               category="Food", owner_id=1))
+    await session.commit()
+
+    result = await period_report(session, owner_id=1, start=date(2026, 9, 1),
+                                 end=date(2026, 10, 31), today=date(2026, 10, 15))
+    assert result["total_paid"] == 10300  # 5000 + 5000 + 300
+    assert result["by_type"]["server_subscription"]["sum"] == 10000
+    assert result["by_type"]["server_subscription"]["count"] == 2
+    assert result["by_type"]["expense"]["sum"] == 300
+    assert result["by_type"]["expense"]["count"] == 1
+
+
+async def test_period_report_multi_day_range(session):
+    """A single-day range works (start == end)."""
+    d = date(2026, 9, 15)
+    e = OneTimeExpense(title="SingleDay", amount_rub=999, paid_date=d,
+                       category="Test", owner_id=1)
+    session.add(e)
+    await session.commit()
+
+    result = await period_report(session, owner_id=1, start=d, end=d, today=d)
+    assert result["total_paid"] == 999
+    assert result["by_type"]["expense"]["count"] == 1
+
+
+async def test_period_report_no_forecast_out_of_month(session):
+    """Forecast is zero when period crosses month boundaries."""
+    result = await period_report(session, owner_id=999, start=date(2026, 9, 1),
+                                 end=date(2026, 10, 31), today=date(2026, 9, 15))
+    assert result["forecast_remaining"] == 0
+
+
+async def test_period_report_single_month_end(session):
+    """Forecast is computed when range ends at month-end and today <= end."""
+    today = date(2026, 9, 15)
+    s = Server(name="S-forecast", kind="gpu", provider="P", amount_rub=3000,
+               period="monthly", next_due=date(2026, 9, 25), owner_id=1, is_active=True)
+    session.add(s)
+    await session.commit()
+
+    result = await period_report(session, owner_id=1, start=date(2026, 9, 1),
+                                 end=date(2026, 9, 30), today=today)
+    assert result["forecast_remaining"] == 3000
+
+
+async def test_period_report_label_format(session):
+    """Period label uses short format for same-month ranges."""
+    result = await period_report(session, owner_id=999, start=date(2026, 9, 1),
+                                 end=date(2026, 9, 30), today=date(2026, 9, 15))
+    assert result["period_label"] == "01.09\u201330.09.2026"
+
+
+async def test_period_report_same_month_label(session):
+    """Same-month range shows formatted label."""
+    result = await period_report(session, owner_id=999, start=date(2026, 9, 5),
+                                 end=date(2026, 9, 20), today=date(2026, 9, 15))
+    assert result["period_label"] == "05.09\u201320.09.2026"
+
+
 # ---- Web route tests ----
 
 
@@ -267,6 +345,8 @@ async def test_reports_page_render_without_month(client):
     assert response.status_code == 200
     assert "Финансовые отчёты" in response.text
     assert "Генерировать" in response.text
+    assert "Этот месяц" in response.text
+    assert "Произвольный период" in response.text
 
 
 async def test_reports_page_post_with_month(client, session_factory):
@@ -274,12 +354,26 @@ async def test_reports_page_post_with_month(client, session_factory):
     await _login(client)
     response = await client.post("/reports", data={"month": "2026-09"})
     assert response.status_code == 200
-    # Check numeric content (encoding-safe)
     assert "39 600" in response.text
     assert "6 500" in response.text
     assert "Разбивка по типу" in response.text
     assert "Топ провайдеров" in response.text
     assert "Топ категорий расходов" in response.text
+
+
+async def test_reports_page_custom_period(client, session_factory):
+    """POST with action=custom_period works correctly."""
+    await _setup_month_data(session_factory, date(2026, 9, 1))
+    await _login(client)
+    response = await client.post("/reports", data={
+        "action": "custom_period",
+        "start_date": "2026-09-01",
+        "end_date": "2026-09-30",
+    })
+    assert response.status_code == 200
+    assert "39 600" in response.text
+    assert "Разбивка по типу" in response.text
+    assert "05.09" not in response.text  # Should show 01.09 - 30.09
 
 
 async def test_reports_isolation_different_user(client, session_factory):
@@ -295,3 +389,23 @@ async def test_reports_isolation_different_user(client, session_factory):
     response = await client.post("/reports", data={"month": "2026-09"})
     assert response.status_code == 200
     assert "0 ₽" in response.text
+
+
+async def test_reports_get_with_params(client, session_factory):
+    """GET with year/month query params renders report."""
+    await _setup_month_data(session_factory, date(2026, 9, 1))
+    await _login(client)
+    response = await client.get("/reports?year=2026&month=9")
+    assert response.status_code == 200
+    assert "39 600" in response.text
+
+
+async def test_reports_toggle_buttons_visible(client):
+    """Both toggle buttons appear on the form."""
+    await _login(client)
+    response = await client.get("/reports")
+    assert response.status_code == 200
+    assert 'id="btn-current"' in response.text
+    assert 'id="btn-custom"' in response.text
+    assert "showCurrent" in response.text
+    assert "showCustom" in response.text

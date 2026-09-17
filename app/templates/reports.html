@@ -4,26 +4,73 @@
   <h1>Финансовые отчёты</h1>
 </div>
 
-<form method="post" class="form-card" style="margin-bottom:24px;">
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+<form method="post" id="report-form" style="margin-bottom:24px;">
+  <input type="hidden" name="action" id="action-field" value="current_month">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+    <button type="button" class="btn btn-secondary" id="btn-current" onclick="showCurrent()">Этот месяц</button>
+    <button type="button" class="btn btn-secondary" id="btn-custom" onclick="showCustom()">Произвольный период</button>
+  </div>
+  <div id="period-current" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     <label for="month">Период (YYYY-MM):</label>
     <input type="month" id="month" name="month" value="{{ default_month }}"
-           style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--text);font-size:14px;">
+           style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--text);font-size:14px;width:auto;min-width:160px;">
+    <button type="submit" class="btn">Генерировать</button>
+  </div>
+  <div id="period-custom" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;">
+    <label for="start_date">С:</label>
+    <input type="date" id="start_date" name="start_date"
+           style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--text);font-size:14px;width:auto;min-width:150px;">
+    <label for="end_date">По:</label>
+    <input type="date" id="end_date" name="end_date"
+           style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--input-bg);color:var(--text);font-size:14px;width:auto;min-width:150px;">
     <button type="submit" class="btn">Генерировать</button>
   </div>
 </form>
+
+<script>
+(function() {
+  var m = '{{ default_month }}';
+  if (m) {
+    document.getElementById('month').value = m;
+  }
+})();
+
+function showCurrent() {
+  document.getElementById('btn-current').classList.add('active');
+  document.getElementById('btn-custom').classList.remove('active');
+  document.getElementById('period-current').style.display = 'flex';
+  document.getElementById('period-custom').style.display = 'none';
+  document.getElementById('action-field').value = 'current_month';
+  document.getElementById('month').disabled = false;
+  document.getElementById('start_date').disabled = true;
+  document.getElementById('end_date').disabled = true;
+}
+
+function showCustom() {
+  document.getElementById('btn-current').classList.remove('active');
+  document.getElementById('btn-custom').classList.add('active');
+  document.getElementById('period-current').style.display = 'none';
+  document.getElementById('period-custom').style.display = 'flex';
+  document.getElementById('action-field').value = 'custom_period';
+  document.getElementById('month').disabled = true;
+  document.getElementById('start_date').disabled = false;
+  document.getElementById('end_date').disabled = false;
+}
+
+showCurrent();
+</script>
 
 {% if report %}
 <div style="margin-top:8px;">
   <section class="cards" style="margin-bottom:28px;">
     <div class="card">
-      <div class="card-label">Оплачено всего</div>
+      <div class="card-label">{{ report.period_label or 'Итого' }}</div>
       <div class="card-value">{{ report.total_paid|money }}</div>
     </div>
   </section>
 
-  <div class="form-card" style="margin-bottom:20px;">
-    <h3 style="margin-top:0;margin-bottom:12px;font-size:16px;">Разбивка по типу</h3>
+  <div class="card">
+    <div class="card-label">Разбивка по типу</div>
     <div class="table-responsive">
       <table class="data-table">
         <thead>
@@ -46,9 +93,9 @@
   </div>
 
   {% if report.top_providers %}
-  <div class="form-card" style="margin-bottom:20px;">
-    <h3 style="margin-top:0;margin-bottom:12px;font-size:16px;">Топ провайдеров</h3>
-    <ol style="margin:0;padding-left:24px;line-height:1.8;">
+  <div class="card">
+    <div class="card-label">Топ провайдеров</div>
+    <ol style="margin:12px 0 0;padding-left:24px;line-height:1.8;">
       {% for p in report.top_providers %}
         <li>{{ p.provider }} — {{ p.sum|money }} ({{ p.count }} плат{{ 'ежа' if 11 <= p.count % 100 <= 19 else 'еж' if p.count % 10 == 1 else 'ежа' if 2 <= p.count % 10 <= 4 else 'ежей' }})</li>
       {% endfor %}
@@ -57,9 +104,9 @@
   {% endif %}
 
   {% if report.top_categories %}
-  <div class="form-card" style="margin-bottom:20px;">
-    <h3 style="margin-top:0;margin-bottom:12px;font-size:16px;">Топ категорий расходов</h3>
-    <ol style="margin:0;padding-left:24px;line-height:1.8;">
+  <div class="card">
+    <div class="card-label">Топ категорий расходов</div>
+    <ol style="margin:12px 0 0;padding-left:24px;line-height:1.8;">
       {% for c in report.top_categories %}
         <li>{{ c.category }} — {{ c.sum|money }}</li>
       {% endfor %}
@@ -68,9 +115,9 @@
   {% endif %}
 
   {% if report.forecast_remaining > 0 %}
-  <div class="form-card" style="margin-bottom:20px;">
-    <h3 style="margin-top:0;margin-bottom:8px;font-size:16px;">Прогноз до конца месяца</h3>
-    <p style="margin:0;font-size:18px;">{{ report.forecast_remaining|money }} ₽</p>
+  <div class="card">
+    <div class="card-label">Прогноз до конца периода</div>
+    <div class="card-value" style="font-size:24px;">{{ report.forecast_remaining|money }} ₽</div>
   </div>
   {% endif %}
 </div>
