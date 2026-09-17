@@ -1,15 +1,17 @@
 {% extends "base.html" %}
 {% block nav %}{% endblock %}
 {% block content %}
-<h1>Вход</h1>
-{% set error = request.query_params.get('error') %}
-{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-<form method="post" action="/login" class="login-form">
-  <label for="username">Логин (username)</label>
-  <input type="text" id="username" name="username" required autofocus autocomplete="username">
-  <label for="password">Пароль</label>
-  <input type="password" id="password" name="password" required autocomplete="current-password">
-  <button class="btn" type="submit">Войти</button>
-</form>
-<p><a class="link" href="/register">Нет аккаунта? Зарегистрироваться</a></p>
+<div class="auth-wrap">
+  <h1>Вход</h1>
+  {% set error = request.query_params.get('error') %}
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" class="auth-card">
+    <label for="username">Логин (username)</label>
+    <input type="text" id="username" name="username" required autofocus autocomplete="username">
+    <label for="password">Пароль</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
+    <button class="btn" type="submit">Войти</button>
+  </form>
+  <p class="auth-links"><a class="link" href="/register">Нет аккаунта? Зарегистрироваться</a></p>
+</div>
 {% endblock %}

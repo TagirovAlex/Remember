@@ -8,31 +8,38 @@
   <script src="/static/app.js" defer></script>
 </head>
 <body>
-  <header>
-    <nav>
+  <header class="site-header">
+    <div class="header-inner">
       <a class="brand" href="/">Remember</a>
       {% block nav %}
         {% if request.state.user %}
-          <a href="/">Дашборд</a>
-          <a href="/servers">Серверы</a>
-          <a href="/subscriptions">Подписки</a>
-          <a href="/expenses">Расходы</a>
-          <a href="/payments">Платежи</a>
-          {% if request.state.user.role == 'admin' %}
-            <a href="/users">Пользователи</a>
-            <a href="/backups">Бэкапы</a>
-          {% endif %}
-          <a href="/settings">Настройки</a>
-          <span class="nav-user">{{ request.state.user.username }}</span>
-          <button type="button" class="theme-toggle" data-current-theme="{{ request.state.user.theme }}">
-            {% if request.state.user.theme == 'dark' %}☀️ Светлая{% else %}🌙 Тёмная{% endif %}
-          </button>
-          <a href="/logout">Выход</a>
+          {% set path = request.url.path %}
+          <nav class="nav">
+            <a class="nav-link {{ 'active' if path == '/' else '' }}" href="/">Дашборд</a>
+            <a class="nav-link {{ 'active' if path.startswith('/servers') else '' }}" href="/servers">Серверы</a>
+            <a class="nav-link {{ 'active' if path.startswith('/subscriptions') else '' }}" href="/subscriptions">Подписки</a>
+            <a class="nav-link {{ 'active' if path.startswith('/expenses') else '' }}" href="/expenses">Расходы</a>
+            <a class="nav-link {{ 'active' if path.startswith('/payments') else '' }}" href="/payments">Платежи</a>
+            {% if request.state.user.role == 'admin' %}
+              <a class="nav-link {{ 'active' if path.startswith('/users') else '' }}" href="/users">Пользователи</a>
+              <a class="nav-link {{ 'active' if path.startswith('/backups') else '' }}" href="/backups">Бэкапы</a>
+            {% endif %}
+            <a class="nav-link {{ 'active' if path.startswith('/settings') else '' }}" href="/settings">Настройки</a>
+          </nav>
+          <div class="nav-actions">
+            <span class="nav-user">{{ request.state.user.username }}</span>
+            <button type="button" class="theme-toggle" data-current-theme="{{ request.state.user.theme }}">
+              {% if request.state.user.theme == 'dark' %}☀️ Светлая{% else %}🌙 Тёмная{% endif %}
+            </button>
+            <a class="nav-link" href="/logout">Выход</a>
+          </div>
         {% else %}
-          <a href="/register">Регистрация</a>
+          <nav class="nav">
+            <a class="nav-link" href="/register">Регистрация</a>
+          </nav>
         {% endif %}
       {% endblock %}
-    </nav>
+    </div>
   </header>
   <main>
     {% block content %}{% endblock %}

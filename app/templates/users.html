@@ -1,32 +1,36 @@
 {% extends "base.html" %}
 {% import "helpers_macros.html" as helpers %}
 {% block content %}
-<h1>Пользователи</h1>
+<div class="page-header">
+  <h1>Пользователи</h1>
+</div>
 {{ helpers.flashes(request) }}
-<a class="btn" href="/users/new">Добавить пользователя</a>
+<a class="btn" href="/users/new">+ Добавить пользователя</a>
 {% if rows %}
-<table>
-  <thead>
-    <tr><th>Логин</th><th>Роль</th><th>Активен</th><th>Telegram</th><th>Создан</th><th></th></tr>
-  </thead>
-  <tbody>
-    {% for row in rows %}
-      <tr>
-        <td>{{ row.username }}</td>
-        <td>{{ row.role }}</td>
-        <td>{{ row.is_active }}</td>
-        <td>{{ row.telegram }}</td>
-        <td>{{ row.created_at }}</td>
-        <td>
-          <a class="link" href="/users/{{ row.id }}/edit">Изменить</a>
-          <form class="inline" method="post" action="/users/{{ row.id }}/delete">
-            <button class="btn btn-danger" type="submit">Удалить</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="table-responsive">
+  <table class="data-table">
+    <thead>
+      <tr><th>Логин</th><th>Роль</th><th>Активен</th><th>Telegram</th><th>Создан</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.username }}</td>
+          <td>{{ row.role }}</td>
+          <td>{{ row.is_active }}</td>
+          <td>{{ row.telegram }}</td>
+          <td>{{ row.created_at }}</td>
+          <td class="actions">
+            <a class="btn btn-secondary btn-sm" href="/users/{{ row.id }}/edit">Изменить</a>
+            <form class="inline" method="post" action="/users/{{ row.id }}/delete">
+              <button class="btn btn-danger btn-sm" type="submit">Удалить</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
 <p>Пользователей пока нет.</p>
 {% endif %}

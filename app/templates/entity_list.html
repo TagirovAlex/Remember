@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 {% import "helpers_macros.html" as helpers %}
 {% block content %}
-<h1>{{ title }}</h1>
+<div class="page-header">
+  <h1>{{ title }}</h1>
+</div>
 {{ helpers.flashes(request) }}
-<a class="btn" href="{{ add_url }}">Добавить</a>
+<a class="btn" href="{{ add_url }}">+ Добавить</a>
 {{ helpers.entity_table(columns, rows, edit_url, next_url) }}
 {% endblock %}

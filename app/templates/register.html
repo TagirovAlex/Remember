@@ -1,17 +1,19 @@
 {% extends "base.html" %}
 {% block nav %}{% endblock %}
 {% block content %}
-<h1>Регистрация</h1>
-{% set error = request.query_params.get('error') %}
-{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-<form method="post" action="/register" class="login-form">
-  <label for="username">Логин (username)</label>
-  <input type="text" id="username" name="username" required autofocus autocomplete="username" minlength="1" maxlength="64">
-  <label for="password">Пароль (от 4 символов)</label>
-  <input type="password" id="password" name="password" required autocomplete="new-password" minlength="4" maxlength="128">
-  <label for="confirm">Повтор пароля</label>
-  <input type="password" id="confirm" name="confirm" required autocomplete="new-password">
-  <button class="btn" type="submit">Зарегистрироваться</button>
-</form>
-<p><a class="link" href="/login">Уже есть аккаунт? Войти</a></p>
+<div class="auth-wrap">
+  <h1>Регистрация</h1>
+  {% set error = request.query_params.get('error') %}
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="/register" class="auth-card">
+    <label for="username">Логин (username)</label>
+    <input type="text" id="username" name="username" required autofocus autocomplete="username" minlength="1" maxlength="64">
+    <label for="password">Пароль (от 4 символов)</label>
+    <input type="password" id="password" name="password" required autocomplete="new-password" minlength="4" maxlength="128">
+    <label for="confirm">Повтор пароля</label>
+    <input type="password" id="confirm" name="confirm" required autocomplete="new-password">
+    <button class="btn" type="submit">Зарегистрироваться</button>
+  </form>
+  <p class="auth-links"><a class="link" href="/login">Уже есть аккаунт? Войти</a></p>
+</div>
 {% endblock %}

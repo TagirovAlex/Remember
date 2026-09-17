@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% import "helpers_macros.html" as helpers %}
 {% block content %}
-<h1>Дашборд</h1>
+<div class="page-header">
+  <h1>Дашборд</h1>
+</div>
 {{ helpers.flashes(request) }}
 
 <section class="cards">
@@ -39,23 +41,25 @@
 
 <h2>Последние платежи</h2>
 {% if recent_payments %}
-<table>
-  <thead>
-    <tr><th>Тип</th><th>Название</th><th>Сумма</th><th>За период</th><th>Оплачено</th><th>Кто</th></tr>
-  </thead>
-  <tbody>
-    {% for row in recent_payments %}
-      <tr>
-        <td>{{ row.type }}</td>
-        <td>{{ row.name }}</td>
-        <td>{{ row.amount }}</td>
-        <td>{{ row.due_date }}</td>
-        <td>{{ row.paid_date }}</td>
-        <td>{{ row.who }}</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="table-responsive">
+  <table class="data-table">
+    <thead>
+      <tr><th>Тип</th><th>Название</th><th>Сумма</th><th>За период</th><th>Оплачено</th><th>Кто</th></tr>
+    </thead>
+    <tbody>
+      {% for row in recent_payments %}
+        <tr>
+          <td>{{ row.type }}</td>
+          <td>{{ row.name }}</td>
+          <td>{{ row.amount }}</td>
+          <td>{{ row.due_date }}</td>
+          <td>{{ row.paid_date }}</td>
+          <td>{{ row.who }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% else %}
 <p>Платежей пока нет.</p>
 {% endif %}

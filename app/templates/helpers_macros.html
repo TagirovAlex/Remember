@@ -8,36 +8,38 @@
 {% macro pay_button(target_type, target_id, next_url) %}
 <form class="inline" method="post" action="/{{ target_type }}s/{{ target_id }}/pay">
   <input type="hidden" name="next" value="{{ next_url }}">
-  <button class="btn" type="submit">Оплачено ✓</button>
+  <button class="btn btn-sm" type="submit">Оплачено ✓</button>
 </form>
 {% endmacro %}
 
 {% macro entity_table(columns, rows, edit_url, next_url) %}
   {% if rows %}
-    <table>
-      <thead>
-        <tr>
-          {% for col in columns %}<th>{{ col.label }}</th>{% endfor %}
-          <th>Действия</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
           <tr>
-            {% for col in columns %}<td>{{ row.get(col.key, '') }}</td>{% endfor %}
-            <td>
-              {% if row.get('pay') and row.get('target_type') %}
-                {{ pay_button(row.target_type, row.id, next_url) }}
-              {% endif %}
-              <a class="link" href="{{ edit_url }}/{{ row.id }}/edit">Изменить</a>
-              <form class="inline" method="post" action="{{ edit_url }}/{{ row.id }}/delete">
-                <button class="btn btn-danger" type="submit">Удалить</button>
-              </form>
-            </td>
+            {% for col in columns %}<th>{{ col.label }}</th>{% endfor %}
+            <th>Действия</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              {% for col in columns %}<td>{{ row.get(col.key, '') }}</td>{% endfor %}
+              <td class="actions">
+                {% if row.get('pay') and row.get('target_type') %}
+                  {{ pay_button(row.target_type, row.id, next_url) }}
+                {% endif %}
+                <a class="btn btn-secondary btn-sm" href="{{ edit_url }}/{{ row.id }}/edit">Изменить</a>
+                <form class="inline" method="post" action="{{ edit_url }}/{{ row.id }}/delete">
+                  <button class="btn btn-danger btn-sm" type="submit">Удалить</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   {% else %}
     <p>Пока нет записей.</p>
   {% endif %}
@@ -45,21 +47,23 @@
 
 {% macro mini_table(rows, next_url) %}
   {% if rows %}
-    <table>
-      <thead>
-        <tr><th>Название</th><th>Сумма</th><th>Оплата до</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-          <tr>
-            <td>{{ row.name }}</td>
-            <td>{{ row.amount_rub|money }}</td>
-            <td>{{ row.next_due }}</td>
-            <td>{{ pay_button(row.target_type, row.target_id, next_url) }}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr><th>Название</th><th>Сумма</th><th>Оплата до</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td>{{ row.amount_rub|money }}</td>
+              <td>{{ row.next_due }}</td>
+              <td class="actions">{{ pay_button(row.target_type, row.target_id, next_url) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   {% else %}
     <p>—</p>
   {% endif %}
