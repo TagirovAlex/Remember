@@ -333,8 +333,8 @@ class TestRender:
         ]
         text = render_history(rows, 10)
         assert "📜 История (последние 10)" in text
-        assert text.splitlines()[1] == "15.09.2026 · gpu-a · 12 000 ₽ · admin · оплата"
-        assert text.splitlines()[2] == "14.09.2026 · netflix · 900 ₽"
+        assert text.splitlines()[1] == "1 · 15.09.2026 · gpu-a · 12 000 ₽ · admin · оплата"
+        assert text.splitlines()[2] == "2 · 14.09.2026 · netflix · 900 ₽"
 
     def test_render_history_empty(self):
         assert render_history([], 10) == "📜 История (последние 10)\n—"
@@ -346,8 +346,8 @@ class TestRender:
         ]
         text = render_search("gpu", results)
         assert "🔍 Поиск: gpu" in text
-        assert "• Сервер · gpu-node-a · 12 000 ₽ · до 20.09.2026" in text
-        assert "• Расход · Питание в офисе · 300 ₽ · 08.09.2026" in text
+        assert "1. Сервер · gpu-node-a · 12 000 ₽ · до 20.09.2026" in text
+        assert "2. Расход · Питание в офисе · 300 ₽ · 08.09.2026" in text
 
     def test_render_search_empty(self):
         assert render_search("zzz", []) == "🔍 Поиск: zzz\nНичего не найдено"

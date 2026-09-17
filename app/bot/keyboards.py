@@ -186,9 +186,9 @@ def expense_category_keyboard() -> InlineKeyboardMarkup:
 def pay_keyboard(entries: list[dict]) -> InlineKeyboardMarkup:
     """One «Оплачено ✓» button per entry (digest/list item)."""
     builder = InlineKeyboardBuilder()
-    for entry in entries:
+    for i, entry in enumerate(entries, 1):
         builder.button(
-            text=PAY_BUTTON_TEXT,
+            text=f"📌 {i}. {PAY_BUTTON_TEXT}",
             callback_data=pay_callback(entry["target_type"], entry["target_id"]),
         )
     builder.adjust(1)
@@ -302,9 +302,9 @@ def menu_kind_keyboard(action: str) -> InlineKeyboardMarkup:
 def menu_entries_keyboard(entries: list[dict]) -> InlineKeyboardMarkup:
     """«Оплачено ✓» per entry plus a back-to-menu button."""
     builder = InlineKeyboardBuilder()
-    for entry in entries:
+    for i, entry in enumerate(entries, 1):
         builder.button(
-            text=PAY_BUTTON_TEXT,
+            text=f"📌 {i}. {PAY_BUTTON_TEXT}",
             callback_data=pay_callback(entry["target_type"], entry["target_id"]),
         )
     builder.button(text=MENU_BACK_TEXT, callback_data=menu_callback("main"))

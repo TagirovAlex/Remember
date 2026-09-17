@@ -106,7 +106,8 @@ def test_pay_keyboard_buttons():
         button for row in keyboard.inline_keyboard for button in row
     ]
     assert [b.callback_data for b in buttons] == ["pay:server:1", "pay:subscription:2"]
-    assert all(b.text == "Оплачено ✓" for b in buttons)
+    for i, b in enumerate(buttons, 1):
+        assert b.text == f"📌 {i}. Оплачено ✓"
 
 
 def test_digest_pay_keyboard_collects_all_sections():

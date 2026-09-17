@@ -189,7 +189,7 @@ def test_menu_entries_keyboard_pay_and_back():
         "pay:subscription:2",
         "menu:main",
     ]
-    assert [b.text for b in buttons] == ["Оплачено ✓", "Оплачено ✓", "🏠 Меню"]
+    assert [b.text for b in buttons] == ["📌 1. Оплачено ✓", "📌 2. Оплачено ✓", "🏠 Меню"]
 
 
 def test_menu_entries_keyboard_empty_only_back():
@@ -219,8 +219,9 @@ def test_render_entries_with_items():
     ]
     text = render_entries("📡 Подписки", entries, "Подписок нет")
     assert text.startswith("📡 Подписки")
-    assert "• Netflix — 1 500 ₽ — до 01.10.2026" in text
-    assert "• GPU node — 12 000 ₽ — до 20.09.2026" in text
+    assert "• Netflix — 1 500 ₽ — до 01.10.2026" not in text
+    assert "1. Netflix — 1 500 ₽ — до 01.10.2026" in text
+    assert "2. GPU node — 12 000 ₽ — до 20.09.2026" in text
 
 
 def test_render_entries_empty():

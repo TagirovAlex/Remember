@@ -444,10 +444,10 @@ async def _list_text(
     ).all()
     entries: list[dict] = []
     if servers:
-        for server in servers:
+        for i, server in enumerate(servers, 1):
             status = "" if server.is_active else " (выключен)"
             lines.append(
-                f"• {server.name} — {server.next_due:%d.%m.%Y} — "
+                f"{i}. {server.name} — {server.next_due:%d.%m.%Y} — "
                 f"{fmt_money(server.amount_rub)}{status}"
             )
             entries.append(
@@ -471,10 +471,10 @@ async def _list_text(
         )
     ).all()
     if subscriptions:
-        for sub in subscriptions:
+        for i, sub in enumerate(subscriptions, 1):
             status = " (пауза)" if sub.status != "active" else ""
             lines.append(
-                f"• {sub.name} — {sub.next_due:%d.%m.%Y} — "
+                f"{i}. {sub.name} — {sub.next_due:%d.%m.%Y} — "
                 f"{fmt_money(sub.amount_rub)}{status}"
             )
             entries.append(

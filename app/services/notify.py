@@ -60,8 +60,9 @@ def render_history(rows: list[dict], limit: int) -> str:
     if not rows:
         lines.append("—")
     else:
-        for row in rows:
+        for i, row in enumerate(rows, 1):
             parts = [
+                str(i),
                 row["paid_date"].strftime("%d.%m.%Y"),
                 row["name"],
                 fmt_money(row["amount_rub"]),
@@ -83,14 +84,14 @@ def render_search(query: str, results: list[dict]) -> str:
     if not results:
         lines.append("Ничего не найдено")
     else:
-        for row in results:
+        for i, row in enumerate(results, 1):
             label = _TYPE_LABELS[row["target_type"]]
             if row["target_type"] == "expense":
                 due = row["due"].strftime("%d.%m.%Y")
             else:
                 due = f"до {row['due']:%d.%m.%Y}"
             lines.append(
-                f"• {label} · {row['name']} · {fmt_money(row['amount_rub'])} · {due}"
+                f"{i}. {label} · {row['name']} · {fmt_money(row['amount_rub'])} · {due}"
             )
     return "\n".join(lines).rstrip()
 
@@ -100,9 +101,9 @@ def _render_section(lines: list[str], emoji: str, title: str, entries: list[dict
     if not entries:
         lines.append("—")
     else:
-        for entry in entries:
+        for i, entry in enumerate(entries, 1):
             due = entry["next_due"].strftime("%d.%m.%Y")
-            lines.append(f"• {entry['name']} — {fmt_money(entry['amount_rub'])} — {due}")
+            lines.append(f"{i}. {entry['name']} — {fmt_money(entry['amount_rub'])} — {due}")
     lines.append("")
 
 
@@ -112,10 +113,10 @@ def render_entries(title: str, entries: list[dict], empty_text: str) -> str:
     if not entries:
         lines.append(empty_text)
     else:
-        for entry in entries:
+        for i, entry in enumerate(entries, 1):
             due = entry["next_due"].strftime("%d.%m.%Y")
             lines.append(
-                f"• {entry['name']} — {fmt_money(entry['amount_rub'])} — до {due}"
+                f"{i}. {entry['name']} — {fmt_money(entry['amount_rub'])} — до {due}"
             )
     return "\n".join(lines).rstrip()
 
