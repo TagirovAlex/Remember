@@ -1,7 +1,7 @@
-from datetime import date, datetime
+from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 Period = Literal["monthly", "quarterly", "yearly"]
 Role = Literal["admin", "user"]
@@ -64,37 +64,6 @@ class ServerBase(BaseModel):
     _amount = field_validator("amount_rub")(_positive)
 
 
-class ServerCreate(ServerBase):
-    pass
-
-
-class ServerRead(ServerBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ServerUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    kind: Literal["gpu", "vm", "dedicated"] | None = None
-    provider: str | None = Field(default=None, min_length=1, max_length=100)
-    location: str | None = None
-    ip: str | None = None
-    specs: str | None = None
-    what_runs: str | None = None
-    panel_url: str | None = None
-    notes: str | None = None
-    amount_rub: int | None = None
-    period: Period | None = None
-    next_due: date | None = None
-    billing_anchor: date | None = None
-    is_active: bool | None = None
-
-    _amount = field_validator("amount_rub")(_positive)
-
-
 class SubscriptionBase(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     provider: str = Field(min_length=1, max_length=100)
@@ -110,33 +79,6 @@ class SubscriptionBase(BaseModel):
     _amount = field_validator("amount_rub")(_positive)
 
 
-class SubscriptionCreate(SubscriptionBase):
-    pass
-
-
-class SubscriptionRead(SubscriptionBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class SubscriptionUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    provider: str | None = Field(default=None, min_length=1, max_length=100)
-    amount_rub: int | None = None
-    period: Period | None = None
-    next_due: date | None = None
-    billing_anchor: date | None = None
-    auto_renewal: bool | None = None
-    status: Literal["active", "paused", "archived"] | None = None
-    url: str | None = None
-    notes: str | None = None
-
-    _amount = field_validator("amount_rub")(_positive)
-
-
 class OneTimeExpenseBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     amount_rub: int
@@ -145,42 +87,3 @@ class OneTimeExpenseBase(BaseModel):
     notes: str | None = None
 
     _amount = field_validator("amount_rub")(_positive)
-
-
-class OneTimeExpenseCreate(OneTimeExpenseBase):
-    pass
-
-
-class OneTimeExpenseRead(OneTimeExpenseBase):
-    id: int
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class OneTimeExpenseUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    amount_rub: int | None = None
-    paid_date: date | None = None
-    category: str | None = None
-    notes: str | None = None
-
-    _amount = field_validator("amount_rub")(_positive)
-
-
-class PaymentCreate(BaseModel):
-    target_type: Literal["server", "subscription"]
-    target_id: int
-    amount_rub: int
-    paid_date: date
-    notes: str | None = None
-
-    _amount = field_validator("amount_rub")(_positive)
-
-
-class PaymentRead(PaymentCreate):
-    id: int
-    due_date: date
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)

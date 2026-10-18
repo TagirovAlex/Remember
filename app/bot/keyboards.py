@@ -327,7 +327,6 @@ VIEW_ACTIONS_PAUSE = "pause"
 VIEW_ACTIONS_RESUME = "resume"
 VIEW_ACTIONS_SHIFT = "shift"
 VIEW_ACTIONS_DELETE_CONFIRM = "delete:confirm"
-VIEW_ACTIONS_DELETE_CANCEL = "delete:cancel"
 
 
 def view_card_callback(action: str, item_id: int) -> str:
@@ -398,21 +397,6 @@ def parse_change_amount_callback(data: str | None) -> tuple[str, int] | None:
     if target_id <= 0:
         return None
     return target_type, target_id
-
-
-def amount_note_callback(target_type: str, target_id: int) -> str:
-    """Build callback_data for submitting payment note after amount change."""
-    return f"{AMOUNT_NOTE_PREFIX}:{target_type}:{target_id}"
-
-
-def view_pay_button(item_id: int) -> InlineKeyboardMarkup:
-    """Single pay button from view card context."""
-    builder = InlineKeyboardBuilder()
-    builder.button(
-        text=PAY_BUTTON_TEXT,
-        callback_data=view_card_callback(VIEW_ACTIONS_PAY, item_id),
-    )
-    return builder.as_markup()
 
 
 def view_card_keyboard(

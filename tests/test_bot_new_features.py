@@ -1,4 +1,4 @@
-"""Tests for new bot features: /view, payment amount confirmation, and /export."""
+"""Tests for bot features: view card callbacks, payment amount confirmation, /export."""
 
 from datetime import date
 from io import StringIO
@@ -8,12 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.bot.keyboards import (
-    VIEW_PREFIX,
-    CONFIRM_AMT_PREFIX,
-    CHANGE_AMT_PREFIX,
     AMOUNT_NOTE_PREFIX,
-    confirm_amount_callback,
+    CHANGE_AMT_PREFIX,
+    CONFIRM_AMT_PREFIX,
     change_amount_callback,
+    confirm_amount_callback,
     parse_change_amount_callback,
     parse_confirm_amount_callback,
     parse_view_card_callback,
@@ -125,7 +124,7 @@ def test_new_prefixes_do_not_overlap_with_existing():
             assert new != existing
             # Check they don't share conflicting routing patterns
             if len(new) >= 2 and len(existing) >= 2:
-                assert not (new[:2] == existing[:2]) or new == existing
+                assert new[:2] != existing[:2] or new == existing
 
 
 def test_all_prefixes_unique():
@@ -139,9 +138,9 @@ def test_all_prefixes_unique():
 
 async def test_format_card_server(session):
     """Test formatting of a server card."""
+    from app.bot.handlers import _format_card
     from app.models import Server
     from app.services.notify import fmt_money
-    from app.bot.handlers import _format_card
 
     server = Server(
         name="GPU-Cluster-1",
@@ -176,9 +175,9 @@ async def test_format_card_server(session):
 
 async def test_format_card_subscription(session):
     """Test formatting of a subscription card."""
+    from app.bot.handlers import _format_card
     from app.models import Subscription
     from app.services.notify import fmt_money
-    from app.bot.handlers import _format_card
 
     sub = Subscription(
         name="OpenAI API",
@@ -206,9 +205,9 @@ async def test_format_card_subscription(session):
 
 async def test_format_card_expense(session):
     """Test formatting of an expense card."""
+    from app.bot.handlers import _format_card
     from app.models import OneTimeExpense
     from app.services.notify import fmt_money
-    from app.bot.handlers import _format_card
 
     exp = OneTimeExpense(
         title="API Call",
@@ -269,8 +268,9 @@ def test_export_csv_structure():
 
 
 def test_help_text_includes_new_commands():
-    """Verify HELP_TEXT mentions /view and /export."""
+    """Verify HELP_TEXT mentions /export and /cancel and no dead /view."""
     from app.bot.handlers import HELP_TEXT
 
-    assert "/view <id>" in HELP_TEXT
     assert "/export" in HELP_TEXT
+    assert "/cancel" in HELP_TEXT
+    assert "/view" not in HELP_TEXT

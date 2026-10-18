@@ -19,16 +19,27 @@ docker compose -f deploy/docker-compose.yml up -d --build
 Предполагается, что проект лежит в `/opt/remember` и создан venv:
 
 ```bash
+sudo useradd --system --home /opt/remember --shell /usr/sbin/nologin remember
+sudo mkdir -p /opt/remember && sudo chown remember:remember /opt/remember
 python -m venv /opt/remember/.venv
 /opt/remember/.venv/bin/pip install -e "."
 sudo cp deploy/remember.service /etc/systemd/system/remember.service
-sudo cp .env /etc/remember.env   # ключи/значения без кавычек
+sudo cp .env /etc/remember.env   # ключи/значения без кавычек, chmod 600
 sudo systemctl daemon-reload
 sudo systemctl enable --now remember
 ```
 
-Если venv не используется — замените `ExecStart` на системный python:
-`ExecStart=/usr/bin/python3 -m app`.
+Если venv лежит в другом месте (например, `/opt/remember/venv`) — поправьте
+`ExecStart` в `remember.service`. Если venv не используется — замените `ExecStart`
+на системный python: `ExecStart=/usr/bin/python3 -m app`.
+
+Первый запуск создаёт БД и администратора `admin` с паролем из `ADMIN_PASSWORD`.
+Проверка статуса и логов:
+
+```bash
+systemctl status remember
+journalctl -u remember -f
+```
 
 ## TLS и reverse-proxy
 

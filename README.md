@@ -57,7 +57,7 @@
 | --- | --- |
 | Язык/стек | Python 3.11+, FastAPI, Jinja2, SQLAlchemy 2 (async), SQLite, aiogram 3, APScheduler, pydantic-settings |
 | Хостинг приложения | Один из существующих VM; TLS — Caddy/nginx на реверс-прокси (вне кода) |
-| Валюта | Одна — рубли. У позиции справочное поле «валюта провайдера» (не участвует в расчётах) |
+| Валюта | Одна — рубли (`amount_rub`); все суммы и отчёты считаются только в рублях |
 | Доступ к веб-интерфейсу | Логин по `username` + паролю (argon2), сессионная cookie; роли `admin`/`user`. Срок жизни сессии настраивается (`session_ttl_days`, 1–30, default 1); смена пароля (своя или админом) увеличивает `users.session_epoch` и инвалидирует прежние сессии |
 | Автоперенос даты после оплаты | От **исходной** `next_due` (+период), а не от даты фактической оплаты, чтобы график не «полз». Один платёж — один период; повторное подтверждение в тот же день не сдвигает дату |
 | Тема интерфейса | Светлая/тёмная, выбор хранится на пользователе (`users.theme`) |
@@ -66,6 +66,7 @@
 | Активные/неактивные позиции | Сервер может быть выключен (`is_active`), подписка — `active/paused/archived`; неактивные не участвуют в отчётах |
 | Прокси к Telegram | SOCKS5 (библиотеки `httpx[socks]` + `aiogram`) |
 | Секреты | Только переменные окружения / `.env`; реальный `.env` в `.gitignore` |
+| Защита входа | Пароли — argon2; сессии подписаны и привязаны к `session_epoch`; rate-limit на `/login` и `/register`; logout только POST; security-заголовки (CSP, nosniff, X-Frame-Options) |
 | Запуск | Один процесс: uvicorn (FastAPI) + aiogram polling + APScheduler |
 | Деплой | Docker Compose или systemd (пример в `deploy/`) |
 | GUI-валюта сводки | Всё суммируется в рублях |
@@ -78,7 +79,7 @@ app/
   config.py          # pydantic-settings: только секреты и окружение
   db.py              # async engine, session, init_db
   models.py          # ORM: Server, Subscription, OneTimeExpense, Payment, Setting, BotSubscriber, User
-  schemas.py         # pydantic-схемы CRUD
+  schemas.py         # pydantic-схемы для валидации форм и настроек
   security.py        # argon2-хэши паролей, подпись сессий
   auth.py            # пользователи, логин, сессии, роли
   services/
@@ -93,8 +94,8 @@ app/
   scheduler.py       # APScheduler: утро/вечер/бэкап, настройки из БД
   bot/
     bot.py           # aiogram: сессия, proxy, polling
-    handlers.py      # /today /soon /overdue /add /list /subscribe /help
-    keyboards.py     # inline-кнопки «Оплачено ✓»
+    handlers.py      # команды и callbacks бота
+    keyboards.py     # inline-кнопки «Оплачено ✓» и карточек
   templates/         # Jinja2
   static/            # css/js
 tests/               # pytest (business logic — чисто, без БД/сети)
@@ -146,7 +147,6 @@ docker compose -f deploy/docker-compose.yml up -d --build
 | --- | --- |
 | `/start`, `/help` | Справка (и главное меню) |
 | `/menu` | Главное inline-меню: подписки, серверы, оплаты, добавление, дашборд |
-| `/view <id>` | Детальная карточка позиции с кнопками управления |
 | `/subscribe` | Подписать текущий чат на дайджесты (по умолчанию включено на /start) |
 | `/unsubscribe` | Отписаться от дайджестов |
 | `/today` | Платежи на сегодня |
@@ -159,6 +159,7 @@ docker compose -f deploy/docker-compose.yml up -d --build
 | `/add` | Быстрое добавление сервера/подписки |
 | `/list` | Списки серверов и подписок |
 | `/export` | Выгрузить все данные пользователя в текстовом файле (CSV) |
+| `/cancel` | Отменить текущее действие (сбросить пошаговый ввод) |
 
 Inline-кнопка «Оплачено ✓» подтверждает платёж: пишет историю и сдвигает `next_due`.
 Повторное нажатие в тот же день не сдвигает дату повторно.
@@ -168,10 +169,12 @@ Inline-кнопка «Оплачено ✓» подтверждает платё
 - `/` — дашборд: сводка, суммы, просрочка, ближайшие платежи, «кто отметил оплату»
 - `/servers`, `/subscriptions`, `/expenses` — CRUD соответствующих сущностей
 - `/payments` — история платежей (с колонкой «Кто»)
+- `/reports` — отчёты: сводка за месяц и произвольный период (суммы, категории)
 - `/users` — управление пользователями (только admin)
 - `/backups` — бэкапы: создать, скачать, удалить (только admin)
-- `/settings` — настройки приложения (дайджест, интервалы, бот, бэкапы) + смена пароля
-- `/login`, `/logout`
+- `/settings` — настройки приложения. Глобальные разделы (бот, параметры,
+  SOCKS5-прокси) доступны только admin; привязка Telegram и смена пароля — каждому
+- `/login`, `/register`, `/logout`
 
 ## Настройки (в БД, редактируются в UI)
 

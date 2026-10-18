@@ -141,6 +141,12 @@ body {
   font-size: 13px;
 }
 
+.nav-logout {
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
 .theme-toggle {
   background: transparent;
   border: 1px solid var(--color-border);
@@ -260,7 +266,7 @@ table {
 .data-table th,
 .data-table td {
   text-align: left;
-  padding: 10px 14px;
+  padding: 10px 10px;
   border-bottom: 1px solid var(--color-border);
   font-size: 14px;
   word-break: break-word;

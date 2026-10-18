@@ -26,7 +26,7 @@ from app.bot.manager import bot_manager
 from app.config import settings
 from app.db import get_session
 from app.models import BotSubscriber, OneTimeExpense, Payment, Server, Subscription, User
-from app.ratelimit import rate_limiter
+from app.ratelimit import RateLimiter, rate_limiter
 from app.schemas import (
     OneTimeExpenseBase,
     ServerBase,
@@ -54,6 +54,10 @@ templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "
 logger = logging.getLogger(__name__)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+# Separate limiter for the login endpoint (brute-force protection); the
+# registration limiter is stricter because accounts can be created there.
+login_limiter = RateLimiter(max_attempts=10, window_seconds=5 * 60)
 
 
 def _set_session_cookie(
@@ -83,6 +87,7 @@ SERVER_COLUMNS = [
     {"label": "Тип", "key": "kind"},
     {"label": "Провайдер", "key": "provider"},
     {"label": "Локация", "key": "location"},
+    {"label": "Личный кабинет", "key": "panel_url"},
     {"label": "Сумма", "key": "amount"},
     {"label": "Период", "key": "period"},
     {"label": "Оплата до", "key": "next_due"},
@@ -154,6 +159,7 @@ def _server_row(server: Server) -> dict:
         "kind": KIND_LABELS.get(server.kind, server.kind),
         "provider": server.provider,
         "location": server.location or "—",
+        "panel_url": server.panel_url,
         "amount": fmt_money(server.amount_rub),
         "amount_rub": server.amount_rub,
         "period": PERIOD_LABELS.get(server.period, server.period),
@@ -209,7 +215,7 @@ def _payment_row(payment: Payment, names: dict[str, str], user_names: dict[int, 
 
 def _redirect_back(next_url: str | None, default: str, msg: str) -> RedirectResponse:
     target = next_url or default
-    if not target.startswith("/"):
+    if not target.startswith("/") or target.startswith("//"):
         target = default
     return RedirectResponse(f"{target}?msg={quote(msg)}", status_code=303)
 
@@ -254,7 +260,7 @@ def _server_fields(server: Server | None) -> list[dict]:
         {"name": "ip", "label": "IP-адрес", "value": _field_or_empty(server, "ip"), "type": "text"},
         {"name": "specs", "label": "Спецификация", "value": _field_or_empty(server, "specs"), "type": "textarea"},
         {"name": "what_runs", "label": "Что развёрнуто", "value": _field_or_empty(server, "what_runs"), "type": "textarea"},
-        {"name": "panel_url", "label": "Панель управления", "value": _field_or_empty(server, "panel_url"), "type": "text"},
+        {"name": "panel_url", "label": "Личный кабинет", "value": _field_or_empty(server, "panel_url"), "type": "text"},
         {"name": "notes", "label": "Заметки", "value": _field_or_empty(server, "notes"), "type": "textarea"},
         {"name": "amount_rub", "label": "Сумма, ₽", "value": server.amount_rub if server else "", "type": "number", "required": True},
         {
@@ -358,6 +364,11 @@ async def login_page(request: Request):
 
 @router.post("/login")
 async def login_submit(request: Request, session: SessionDep):
+    ip = request.client.host if request.client is not None else "unknown"
+    if not login_limiter.allow(ip):
+        raise HTTPException(
+            status_code=429, detail="Слишком много попыток. Попробуйте позже"
+        )
     form = await request.form()
     username = str(form.get("username") or "").strip()
     password = str(form.get("password") or "")
@@ -422,7 +433,7 @@ async def register_submit(request: Request, session: SessionDep):
     return response
 
 
-@router.get("/logout", dependencies=[Depends(get_current_user)])
+@router.post("/logout", dependencies=[Depends(get_current_user)])
 async def logout():
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE)
@@ -1039,26 +1050,34 @@ async def payments_page(request: Request, session: SessionDep):
 
 @router.get("/settings", dependencies=[Depends(get_current_user)])
 async def settings_page(request: Request, session: SessionDep):
-    """Render the settings page with app settings and the bot status."""
+    """Render the settings page: global options for admins, personal for all."""
     user = request.state.user
-    items = []
-    for meta in settings_svc.SETTING_META:
-        value = await settings_svc.get_setting(session, meta["key"])
-        if value is None:
-            value = meta["default"] if meta["key"] != "tz" else settings.tz
-        if meta["key"] == "proxy_password":
-            value = ""
-        items.append({**meta, "value": value})
-    status = bot_manager.status()
-    bot_status = {
-        "running": status["running"],
-        "connected": status["connected"],
-        "error": status["error"],
-        "token_configured": status["token_configured"],
-        "bot_info": status["bot_info"],
-        "enabled": await settings_svc.bot_enabled(session),
-    }
-    proxy = {item["key"]: item["value"] for item in items if item["key"].startswith("proxy_")}
+    is_admin = user.role == "admin"
+    items: list[dict] = []
+    proxy: dict[str, str] = {}
+    bot_status: dict | None = None
+    if is_admin:
+        for meta in settings_svc.SETTING_META:
+            value = await settings_svc.get_setting(session, meta["key"])
+            if value is None:
+                value = meta["default"] if meta["key"] != "tz" else settings.tz
+            if meta["key"] == "proxy_password":
+                value = ""
+            items.append({**meta, "value": value})
+        status = bot_manager.status()
+        bot_status = {
+            "running": status["running"],
+            "connected": status["connected"],
+            "error": status["error"],
+            "token_configured": status["token_configured"],
+            "bot_info": status["bot_info"],
+            "enabled": await settings_svc.bot_enabled(session),
+        }
+        proxy = {
+            item["key"]: item["value"]
+            for item in items
+            if item["key"].startswith("proxy_")
+        }
     telegram = {
         "telegram_id": user.telegram_id,
         "confirmed": user.telegram_id_confirmed,
@@ -1067,6 +1086,7 @@ async def settings_page(request: Request, session: SessionDep):
         request,
         "settings.html",
         {
+            "is_admin": is_admin,
             "settings_items": items,
             "bot_status": bot_status,
             "proxy": proxy,
@@ -1124,7 +1144,7 @@ async def settings_telegram_submit(request: Request, session: SessionDep):
     )
 
 
-@router.post("/settings", dependencies=[Depends(get_current_user)])
+@router.post("/settings", dependencies=[Depends(require_admin)])
 async def settings_submit(request: Request, session: SessionDep):
     """Save settings and reconcile the Telegram bot state."""
     form = await request.form()
@@ -1169,7 +1189,7 @@ async def settings_submit(request: Request, session: SessionDep):
     return RedirectResponse("/settings?msg=Настройки сохранены", status_code=303)
 
 
-@router.post("/settings/bot/start", dependencies=[Depends(get_current_user)])
+@router.post("/settings/bot/start", dependencies=[Depends(require_admin)])
 async def bot_start(request: Request, session: SessionDep):
     """Enable and start the Telegram bot; error out when BOT_TOKEN is missing."""
     await settings_svc.set_setting(session, "bot_enabled", "true")
@@ -1185,7 +1205,7 @@ async def bot_start(request: Request, session: SessionDep):
     return RedirectResponse(f"/settings?msg={quote('Бот запущен')}", status_code=303)
 
 
-@router.post("/settings/bot/stop", dependencies=[Depends(get_current_user)])
+@router.post("/settings/bot/stop", dependencies=[Depends(require_admin)])
 async def bot_stop(request: Request, session: SessionDep):
     """Disable and stop the Telegram bot."""
     await settings_svc.set_setting(session, "bot_enabled", "false")

@@ -4,10 +4,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings; secrets come from environment only."""
+    """Application settings from the environment.
+
+    Holds secrets plus the few bootstrap values used before the database is
+    available; per-installation and per-user options live in the settings table.
+    """
 
     bot_token: str = ""
-    proxy_url: str = ""
     admin_password: str = ""
     secret_key: str = ""
     database_path: str = "data/remember.db"

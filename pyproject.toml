@@ -27,8 +27,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/<username>/remember"
-Repository = "https://github.com/<username>/remember"
+Homepage = "https://github.com/TagirovAlex/remember"
+Repository = "https://github.com/TagirovAlex/remember"
 
 [project.optional-dependencies]
 dev = [

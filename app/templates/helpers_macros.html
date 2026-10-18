@@ -29,6 +29,8 @@
                 <td>
                   {% if col.key == 'image' %}
                     {% if row.image %}<img class="entity-thumb" src="{{ row.image }}" alt="">{% else %}—{% endif %}
+                  {% elif col.key == 'panel_url' and row.get('panel_url') %}
+                    <a href="{{ row.panel_url }}" target="_blank" rel="noopener">открыть</a>
                   {% else %}
                     {{ row.get(col.key, '') }}
                   {% endif %}

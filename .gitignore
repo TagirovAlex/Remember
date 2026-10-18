@@ -1,11 +1,44 @@
+# Virtual environments
 venv/
 .venv/
+env/
+
+# Python bytecode / caches
 __pycache__/
-*.pyc
-.env
-data/*
-!data/.gitkeep
+*.py[cod]
+*$py.class
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+
+# Packaging / build
+build/
 dist/
+*.egg
 *.egg-info/
+
+# Tests / coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Secrets and local data
+.env
+.env.*
+!.env.example
+data/*
+!data/.gitkeep
+
+# Manual cleanup quarantine (junk awaiting review/deletion)
+_unnecessary/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

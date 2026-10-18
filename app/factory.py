@@ -45,6 +45,20 @@ def create_app() -> FastAPI:
         name="static",
     )
 
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        )
+        return response
+
     @app.exception_handler(StarletteHTTPException)
     async def _http_error_handler(request: Request, exc: StarletteHTTPException):
         code = exc.status_code

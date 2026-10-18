@@ -18,8 +18,6 @@ from app.bot.keyboards import (
     add_kind_keyboard,
     back_to_menu_keyboard,
     binding_notice_text,
-    change_amount_callback,
-    confirm_amount_callback,
     confirm_binding_keyboard,
     digest_pay_keyboard,
     expense_category_keyboard,
@@ -82,13 +80,13 @@ HELP_TEXT = (
     "/stats — сводка за текущий месяц\n"
     "/list — список серверов и подписок\n"
     "/add — быстро добавить сервер или подписку\n"
-    "/view <id> — детальная карточка + управление\n"
     "/addexpense — быстро добавить разовый расход\n"
     "/history [N] — последние платежи (N до 30)\n"
     "/find <запрос> — поиск по серверам, подпискам и расходам\n"
     "/export — выгрузить все свои данные в файл\n"
     "/subscribe — включить дайджесты\n"
     "/unsubscribe — отключить дайджесты\n"
+    "/cancel — отменить текущее действие\n"
     "/help — эта справка\n\n"
     "По кнопке \u201cОплачено \u2713\u201d платёж фиксируется, дата оплаты сдвигается вперёд."
 )
@@ -977,10 +975,8 @@ async def on_tg_cancel(callback: CallbackQuery) -> None:
             return
 
 
-
-
 class ViewDateStates(StatesGroup):
-    """FSM for shifting next_due via /view card."""
+    """FSM for shifting next_due via a view card."""
     wait_date = State()
 
 
@@ -1001,8 +997,6 @@ _SPEND_EMOJI = chr(0xf4b8)
 _PAY_OK = chr(0x2705)
 _CHECK = chr(0x2713)
 _CLOCK = chr(0x23f0)
-_PAUSE = chr(0x23f8)
-_PLAY = chr(0x25b6)
 
 
 def _fmt_next_due(d):
@@ -1064,73 +1058,6 @@ def _format_card(entity, target_type):
             _B,
         ]
         return "\n".join(cards)
-
-
-async def cmd_view(message: Message) -> None:
-    """Handle /view <id> command -- show detailed card for a position."""
-    async with session_factory() as session:
-        user = await _owner(session, message.chat.id)
-        await session.commit()
-        if user is None:
-            await message.answer("\u0412\u0432\u0435\u0434\u0438\u0442\u0435 ID: /view <id>")
-            return
-
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer("\u0412\u0432\u0435\u0434\u0438\u0442\u0435 ID: /view <id>")
-        return
-    raw_id = args[1].strip()
-    try:
-        item_id = int(raw_id)
-    except ValueError:
-        await message.answer("\u0412\u0432\u0435\u0434\u0438\u0442\u0435 ID: /view <id>")
-        return
-
-    async with session_factory() as session:
-        chat_id = message.chat.id
-        owner = await _owner(session, chat_id)
-        if owner is None:
-            await session.commit()
-            await message.answer(BINDING_HINT)
-            return
-
-        entity = None
-        target_type = None
-
-        server = await session.get(Server, item_id)
-        if server is not None and server.owner_id == owner.id:
-            entity = server
-            target_type = "server"
-
-        if entity is None:
-            sub = await session.get(Subscription, item_id)
-            if sub is not None and sub.owner_id == owner.id:
-                entity = sub
-                target_type = "subscription"
-
-        if entity is None:
-            expense = await session.scalar(
-                select(OneTimeExpense).where(
-                    OneTimeExpense.id == item_id,
-                    OneTimeExpense.owner_id == owner.id,
-                )
-            )
-            if expense is not None:
-                entity = expense
-                target_type = "expense"
-
-        await session.commit()
-
-    if entity is None:
-        await message.answer("\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430")
-        return
-
-    assert target_type is not None
-    card_text = _format_card(entity, target_type)
-    has_status = target_type in ("server", "subscription")
-    status_value = getattr(entity, "status", None) if target_type == "subscription" else None
-    kb = view_card_keyboard(target_type, item_id, has_status, status_value)
-    await message.answer(card_text, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("view:"))
@@ -1338,32 +1265,6 @@ async def on_delete_execute(callback: CallbackQuery) -> None:
         except TelegramBadRequest:
             pass
     await callback.answer()
-
-
-async def _amount_confirm_text(entity, original_amount):
-    """Build the intermediate payment confirmation message."""
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    t = "subscription" if isinstance(entity, Subscription) else "server"
-    text = (
-        f"{_PAY_OK} \u041e\u043f\u043b\u0430\u0442\u0430 \u0437\u0430 \u043f\u043e\u0437\u0438\u0446\u0438\u044e \u0443\u0441\u043f\u0435\u0448\u043d\u043e\n"
-        f"\u0421\u0443\u043c\u043c\u0430 \u0431\u044b\u043b\u0430 {fmt_money(original_amount)}. \u0412\u0432\u0435\u0441\u0442\u0438 \u0434\u0440\u0443\u0433\u0443\u044e?\n"
-        f"(\u2014 \u2014 \u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c)"
-    )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text=f"\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c {fmt_money(original_amount)}",
-                callback_data=confirm_amount_callback(t, entity.id),
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0443\u043c\u043c\u0443",
-                callback_data=change_amount_callback(t, entity.id),
-            )
-        ],
-    ])
-    return text, kb
 
 
 @router.callback_query(F.data.startswith("confirm_amount_ok:"))

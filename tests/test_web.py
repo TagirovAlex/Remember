@@ -764,3 +764,68 @@ async def test_unhandled_exception_500_html(app):
         assert response.status_code == 500
         assert "ошибка сервера" in response.text
         assert "RuntimeError" not in response.text
+
+
+async def test_logout_requires_post(client):
+    await _login(client)
+    get_response = await client.get("/logout")
+    assert get_response.status_code == 405
+    post_response = await client.post("/logout")
+    assert post_response.status_code == 303
+    assert post_response.headers["location"] == "/login"
+
+
+async def test_login_is_rate_limited(client):
+    for _ in range(10):
+        response = await client.post(
+            "/login", data={"username": "admin", "password": "wrong"}
+        )
+        assert response.status_code == 303
+    blocked = await client.post(
+        "/login", data={"username": "admin", "password": PASSWORD}
+    )
+    assert blocked.status_code == 429
+
+
+async def test_open_redirect_with_next_is_blocked(client, session_factory):
+    await _login(client)
+    response = await client.post(
+        "/servers",
+        data={
+            "name": "GPU-Redirect",
+            "kind": "gpu",
+            "provider": "Hetzner",
+            "amount_rub": "1000",
+            "period": "monthly",
+            "next_due": "2026-09-16",
+            "next": "//evil.example.com",
+        },
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/servers?msg=")
+
+
+async def test_settings_submit_requires_admin(client, session_factory):
+    await _add_user(session_factory, "bob", "bob-pass")
+    await _login_as(client, "bob", "bob-pass")
+    response = await client.post("/settings", data={"tz": "UTC"})
+    assert response.status_code == 403
+
+
+async def test_settings_page_hides_global_sections_from_non_admin(
+    client, session_factory
+):
+    await _add_user(session_factory, "carol", "carol-pass")
+    await _login_as(client, "carol", "carol-pass")
+    response = await client.get("/settings")
+    assert response.status_code == 200
+    assert "Telegram-бот" not in response.text
+    assert "SOCKS5" not in response.text
+    assert "Сменить мой пароль" in response.text
+
+
+async def test_security_headers_present(client):
+    response = await client.get("/login")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]

@@ -7,6 +7,7 @@
 {{ helpers.flashes(request) }}
 
 <div class="settings-grid">
+  {% if is_admin %}
   <div class="settings-section">
     <h2>Telegram-бот</h2>
     <div class="card bot-status">
@@ -83,6 +84,7 @@
       <button class="btn" type="submit">Сохранить</button>
     </form>
   </div>
+  {% endif %}
 
   <div class="settings-section">
     <h2>Telegram</h2>
