@@ -7,6 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.methods import SendPhoto
 from aiogram.types import InputFile
 
+from app.bot import handlers
 from app.bot.bot import HttpxSession, build_bot, build_dispatcher
 from app.bot.handlers import AddStates
 from app.bot.keyboards import (
@@ -176,6 +177,15 @@ def test_add_states_described():
 def test_build_dispatcher_ok():
     dispatcher = build_dispatcher()
     assert dispatcher is not None
+
+
+def test_build_dispatcher_twice_after_bot_restart():
+    """Each build gets its own router copy: aiogram forbids re-attaching one router."""
+    first = build_dispatcher()
+    second = build_dispatcher()
+    assert first is not second
+    assert first.message is not second.message
+    assert handlers.router.parent_router is None
 
 
 def test_build_bot_without_proxy():

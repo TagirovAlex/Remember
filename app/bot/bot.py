@@ -1,5 +1,6 @@
 """aiogram factories: bot with a custom httpx session, dispatcher, DB session factory."""
 
+from copy import deepcopy
 from typing import Any, cast
 
 import httpx
@@ -106,9 +107,15 @@ def build_bot(token: str, proxy_url: str = "") -> Bot:
 
 
 def build_dispatcher() -> Dispatcher:
-    """Create a Dispatcher with in-memory FSM storage and all routers registered."""
+    """Create a Dispatcher with in-memory FSM storage and all routers registered.
+
+    aiogram allows a Router to be attached to a single Dispatcher only, so the
+    module-level handlers router is copied for every build. Without the copy a
+    stop/start of the bot from the UI would raise ``RuntimeError: Router is
+    already attached`` and answer the request with a 500.
+    """
     dispatcher = Dispatcher(storage=MemoryStorage())
-    dispatcher.include_router(handlers.router)
+    dispatcher.include_router(deepcopy(handlers.router))
     return dispatcher
 
 

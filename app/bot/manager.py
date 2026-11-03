@@ -89,6 +89,21 @@ class BotManager:
             "bot_info": self._bot_info,
         }
 
+    def _note_start_error(self, message: str) -> None:
+        """Record a start failure so the settings page can show its reason."""
+        self._connected = False
+        self._error = message
+        self._bot_info = None
+
+    async def _drop_slots(self) -> None:
+        """Remove the bot digest slots; a scheduler error must not escape."""
+        if self._scheduler is None:
+            return
+        try:
+            await drop_slots(self._scheduler, list(_BOT_SLOTS))
+        except Exception:
+            logger.exception("failed to drop bot digest slots")
+
     async def _run_polling(self, bot: Bot, dispatcher: Dispatcher) -> None:
         """Run the polling loop under supervision; failures become status errors.
 
@@ -110,8 +125,7 @@ class BotManager:
             if self._senders is not None:
                 for key in _BOT_SLOTS:
                     self._senders.pop(key, None)
-            if self._scheduler is not None:
-                await drop_slots(self._scheduler, list(_BOT_SLOTS))
+            await self._drop_slots()
             with suppress(Exception):
                 await bot.session.close()
 
@@ -132,19 +146,21 @@ class BotManager:
             logger.error("BotManager is not configured; call configure() first")
             return False
         set_session_factory(self._factory)
+        bot: Bot | None = None
         try:
             async with self._factory() as session:
                 proxy = await settings_service.proxy_url(session)
             bot = build_bot(settings.bot_token, proxy)
+            dispatcher = build_dispatcher()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._connected = False
-            self._error = f"Не удалось создать бота: {exc}"
-            self._bot_info = None
+            if bot is not None:
+                with suppress(Exception):
+                    await bot.session.close()
+            self._note_start_error(f"Не удалось создать бота: {exc}")
             logger.exception("failed to build the bot")
             return False
-        dispatcher = build_dispatcher()
         try:
             self._senders["morning"] = partial(send_digest_to_subscribers, bot)
             self._senders["evening"] = partial(send_evening_reminder_to_subscribers, bot)
@@ -172,8 +188,7 @@ class BotManager:
             self._dispatcher = None
             self._senders.pop("morning", None)
             self._senders.pop("evening", None)
-            if self._scheduler is not None:
-                await drop_slots(self._scheduler, list(_BOT_SLOTS))
+            await self._drop_slots()
             with suppress(Exception):
                 await bot.session.close()
             logger.exception("bot get_me() failed; the bot will not start")
@@ -207,8 +222,7 @@ class BotManager:
         if self._senders is not None:
             for key in _BOT_SLOTS:
                 self._senders.pop(key, None)
-        if self._scheduler is not None:
-            await drop_slots(self._scheduler, list(_BOT_SLOTS))
+        await self._drop_slots()
         bot = self._bot
         if bot is not None:
             with suppress(Exception):

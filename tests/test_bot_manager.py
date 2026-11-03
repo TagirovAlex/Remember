@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.bot.bot import build_dispatcher as real_build_dispatcher
 from app.bot.manager import BotManager, bot_manager
 from app.config import settings
 from app.models import Base
@@ -286,6 +287,46 @@ async def test_apply_enabled_without_token(harness, monkeypatch):
     assert result == "no-token"
     assert harness.manager.is_running() is False
     assert recorder.calls == []
+
+
+async def test_start_after_stop_rebuilds_dispatcher(harness, monkeypatch):
+    """Manual stop/start must not hit aiogram's single-attach router rule."""
+    monkeypatch.setattr(settings, "bot_token", "123:test")
+    recorder = _BuildRecorder()
+    monkeypatch.setattr("app.bot.manager.build_bot", recorder.build_bot)
+
+    def build_dispatcher_with_real_router():
+        real_build_dispatcher()
+        return recorder.dispatcher
+
+    monkeypatch.setattr(
+        "app.bot.manager.build_dispatcher", build_dispatcher_with_real_router
+    )
+
+    assert await harness.manager.start() is True
+    assert await harness.manager.stop() is True
+    assert await harness.manager.start() is True
+    await asyncio.sleep(0)
+    assert harness.manager.is_running() is True
+    assert await harness.manager.stop() is True
+
+
+async def test_start_dispatcher_failure_sets_error(harness, monkeypatch):
+    """A dispatcher build failure is reported in the status, never raised as a 500."""
+    monkeypatch.setattr(settings, "bot_token", "123:test")
+    recorder = _BuildRecorder()
+    monkeypatch.setattr("app.bot.manager.build_bot", recorder.build_bot)
+
+    def broken_build() -> None:
+        raise RuntimeError("Router is already attached")
+
+    monkeypatch.setattr("app.bot.manager.build_dispatcher", broken_build)
+
+    assert await harness.manager.start() is False
+    assert harness.manager.is_running() is False
+    assert harness.manager.status()["error"] is not None
+    assert "Router is already attached" in harness.manager.status()["error"]
+    assert recorder.bot.session.closed is True
 
 
 async def test_apply_enabled_when_already_running(harness, monkeypatch):
