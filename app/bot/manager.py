@@ -208,11 +208,21 @@ class BotManager:
     async def stop(self) -> bool:
         """Stop polling, drop digest slots and release bot resources.
 
-        Idempotent and safe to call when the bot is already stopped.
+        Idempotent and safe to call when the bot is already stopped. Polling is
+        stopped via ``Dispatcher.stop_polling``: aiogram then cancels its own
+        ``_polling`` task. Cancelling the supervisor task directly would skip
+        that cleanup and leave the inner task retrying forever on a closed
+        session.
         """
         task = self._polling_task
+        if task is not None and not task.done():
+            if self._dispatcher is not None:
+                with suppress(Exception):
+                    await self._dispatcher.stop_polling()
+            await asyncio.sleep(0)
+            if not task.done():
+                task.cancel()
         if task is not None:
-            task.cancel()
             with suppress(asyncio.CancelledError, Exception):
                 await task
         dispatcher = self._dispatcher

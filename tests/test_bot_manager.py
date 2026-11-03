@@ -1,9 +1,11 @@
 """BotManager tests: start/stop/apply without network or a real token."""
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from aiogram import Dispatcher
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -48,6 +50,7 @@ class _FakeScheduler:
 class _FakeSession:
     def __init__(self) -> None:
         self.closed = False
+        self.timeout = 0.0
 
     async def close(self) -> None:
         self.closed = True
@@ -64,6 +67,24 @@ class _FakeBot:
         if self._get_me_error is not None:
             raise self._get_me_error
         return {"id": 1, "is_bot": True, "first_name": "test", "username": "test_bot"}
+
+
+class _DispatcherBot:
+    """Bot stand-in good enough for a real aiogram Dispatcher."""
+
+    def __init__(self) -> None:
+        self.session = _FakeSession()
+        self.id = 1
+
+    async def me(self):
+        return SimpleNamespace(username="test_bot", id=1, full_name="Test Bot")
+
+    async def get_me(self):
+        return await self.me()
+
+    async def __call__(self, method, **kwargs):
+        await asyncio.sleep(0.05)
+        return []
 
 
 class _FakeDispatcher:
@@ -327,6 +348,36 @@ async def test_start_dispatcher_failure_sets_error(harness, monkeypatch):
     assert harness.manager.status()["error"] is not None
     assert "Router is already attached" in harness.manager.status()["error"]
     assert recorder.bot.session.closed is True
+
+
+def _aiogram_polling_tasks() -> list[asyncio.Task]:
+    """Return pending aiogram polling tasks (the inner ones start_polling owns)."""
+    current = asyncio.current_task()
+    found: list[asyncio.Task] = []
+    for task in asyncio.all_tasks():
+        if task is current or task.done():
+            continue
+        name = getattr(task.get_coro(), "__qualname__", "")
+        if name.startswith("Dispatcher._polling") or "_listen_updates" in name:
+            found.append(task)
+    return found
+
+
+async def test_stop_cancels_aiogram_inner_polling_task(harness, monkeypatch):
+    """stop() must not leave aiogram's polling loop retrying on a closed client."""
+    monkeypatch.setattr(settings, "bot_token", "123:test")
+    bot = _DispatcherBot()
+    dispatcher = Dispatcher()
+    monkeypatch.setattr("app.bot.manager.build_bot", lambda token, proxy="": bot)
+    monkeypatch.setattr("app.bot.manager.build_dispatcher", lambda: dispatcher)
+
+    assert await harness.manager.start() is True
+    await asyncio.sleep(0.1)
+    assert len(_aiogram_polling_tasks()) == 1
+
+    assert await harness.manager.stop() is True
+    await asyncio.sleep(0.1)
+    assert _aiogram_polling_tasks() == []
 
 
 async def test_apply_enabled_when_already_running(harness, monkeypatch):
