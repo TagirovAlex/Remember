@@ -5,7 +5,6 @@ Run with ``python -m app``; importing this module starts nothing.
 
 import asyncio
 import logging
-import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -80,8 +79,8 @@ async def main() -> None:
     await plan_jobs(scheduler, senders, factory)
     start_watchdog(scheduler, senders, factory)
 
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
+    host = settings.host
+    port = settings.port
     server = Server(Config(app, host=host, port=port, log_level="info"))
     server_task = asyncio.create_task(server.serve())
 

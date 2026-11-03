@@ -12,7 +12,8 @@ docker compose -f deploy/docker-compose.yml up -d --build
 
 - Контекст сборки — корень проекта, Dockerfile — `deploy/Dockerfile`.
 - База SQLite хранится в `./data` (монтируется в `/data`).
-- Порт `8000`, рестарт — `unless-stopped`.
+- Порт по умолчанию `8000` (задаётся `PORT` в `.env`), рестарт — `unless-stopped`.
+  Если меняете `PORT`, обновите проброс порта в `docker-compose.yml`.
 
 ## Вариант 2 — systemd
 
@@ -43,12 +44,24 @@ journalctl -u remember -f
 
 ## TLS и reverse-proxy
 
-Приложение слушает HTTP на `8000`. Перед ним поставьте реверс-прокси с TLS
-(Caddy/nginx) и проксируйте `/` на `127.0.0.1:8000`. Caddy:
+Приложение слушает `HOST:PORT` из окружения; по умолчанию — `0.0.0.0:8000`
+(в `/etc/remember.env` или `PORT=8001`, если 8000 уже занят другим сервисом).
+Перед ним поставьте реверс-прокси с TLS (Caddy/nginx) и проксируйте `/` на
+`127.0.0.1:<PORT>`. Caddy для порта `8001`:
 
 ```
 remember.example.com {
-    reverse_proxy 127.0.0.1:8000
+    reverse_proxy 127.0.0.1:8001
+}
+```
+
+nginx для порта `8001`:
+
+```
+location / {
+    proxy_pass http://127.0.0.1:8001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     secret_key: str = ""
     database_path: str = "data/remember.db"
     tz: str = "Europe/Moscow"
+    host: str = "0.0.0.0"
+    port: int = 8000
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
