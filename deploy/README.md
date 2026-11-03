@@ -68,3 +68,18 @@ location / {
 Cookie сессии ставится с флагом `secure`, только когда запрос пришёл по HTTPS:
 прокси должен передавать заголовок `X-Forwarded-Proto: https`, иначе cookie
 будет обычной (для локальной разработки по http это работает автоматически).
+
+## Обновление
+
+Код на сервере — обычный git-клон, поэтому обновление сводится к `pull` и
+рестарту:
+
+```bash
+cd /opt/remember
+git pull
+sudo systemctl restart remember
+sudo journalctl -u remember -n 50 --no-pager
+```
+
+`git pull` не трогает `.env`, `data/` и `venv/` — они в `.gitignore`.
+Перед обновлением стоит сделать бэкап БД на странице `/backups`.
